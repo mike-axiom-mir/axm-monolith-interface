@@ -4,7 +4,7 @@ import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
 const Organs=require('../shared/interface-organs.js');
 
-assert.equal(Organs.VERSION,'0.2.0-persistence');
+assert.equal(Organs.VERSION,'0.2.1-persistence');
 assert.equal(Organs.PERSISTENCE_SCHEMA,'axm.interface-persistence/v0.1');
 assert.equal(Organs.BUILTIN_ORGANS.length,7);
 assert.deepEqual(Organs.ROOTS,['truth','agency','continuity','wisdom']);
@@ -92,21 +92,26 @@ class MemoryStorage{
 const storage=new MemoryStorage();
 const persistence=new Organs.InterfacePersistence({surface:'human-mobile',storage,maxCheckpoints:20,maxEvidence:500});
 assert.equal(persistence.available(),true);
-const saveResult=persistence.save({id:'cartridge-a',version:'1.0.0'},system,{reason:'test-save',approvedPlanKeys:['plan-approved'],deniedPlanKeys:['plan-denied']});
+const approvedPlan='cartridge-a@1.0.0:deadbeef';
+const deniedPlan='cartridge-a@1.0.0:feedcafe';
+const saveResult=persistence.save({id:'cartridge-a',version:'1.0.0'},system,{reason:'test-save',approvedPlanKeys:[approvedPlan],deniedPlanKeys:[deniedPlan]});
 assert.equal(saveResult.saved,true);
 assert.ok(saveResult.stateHash);
 
 const persisted=persistence.load({id:'cartridge-a',version:'1.0.0'});
 assert.equal(persisted.cartridgeId,'cartridge-a');
 assert.equal(persisted.versionChanged,false);
-assert.equal(persisted.approvedPlanKeys[0],'plan-approved');
-assert.equal(persisted.deniedPlanKeys[0],'plan-denied');
+assert.ok(persisted.approvedPlanKeys.includes(approvedPlan));
+assert.ok(persisted.deniedPlanKeys.includes(deniedPlan));
 assert.ok(persisted.checkpoints.length>=1,'checkpoint lineage should persist');
 
 const newer=persistence.load({id:'cartridge-a',version:'2.0.0'});
 assert.equal(newer.versionChanged,true,'same cartridge id may inherit across a visible version change');
 assert.equal(newer.savedVersion,'1.0.0');
 assert.equal(newer.currentVersion,'2.0.0');
+assert.ok(newer.approvedPlanKeys.includes('cartridge-a@2.0.0:deadbeef'),'identical approved plan fingerprint should carry forward across version drift');
+assert.ok(newer.deniedPlanKeys.includes('cartridge-a@2.0.0:feedcafe'),'identical denied plan fingerprint should carry forward across version drift');
+assert.ok(!newer.approvedPlanKeys.includes('cartridge-a@2.0.0:aaaaaaaa'),'different plan content must not inherit approval');
 
 const restoredSystem=persistence.restoreSystem(newer,{userType:'human'});
 assert.equal(restoredSystem.snapshot().stateHash,newer.stateHash);
