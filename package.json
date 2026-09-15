@@ -1,8 +1,8 @@
 {
   "name": "axm-monolith-interface",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
-  "description": "Human, phone-human and machine-native AXM monolith interfaces with staged phone ZIP intake, local Codex CLI seat, and a deterministic interface organ fabric.",
+  "description": "Human, phone-human and machine-native AXM monolith interfaces with staged phone ZIP intake, local Codex CLI seat, deterministic interface organs, and device-local per-cartridge interface persistence.",
   "scripts": {
     "test": "node tests/smoke.mjs && node tests/chat.mjs && node tests/interface-organs.mjs && node tests/interface-renderer.mjs && node tests/mobile-page.mjs && node --check phone-bridge/axm-phone-bridge.js && node tests/phone-bridge.mjs",
     "machine": "node machine/host.mjs serve",
