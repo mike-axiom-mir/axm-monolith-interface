@@ -1,0 +1,19 @@
+{
+  "package": "AXM_PLATFORM_EXTERNAL_CHAT_BRIDGE",
+  "version": "0.1.0",
+  "kind": "external-companion",
+  "upstream": {
+    "repository": "mike-axiom-mir/axm-collaboration-platform",
+    "path": "bridge/axm-bridge.js",
+    "blob_sha": "b9295c6b90caa6d5f9a2f286343b0bd914cc6ef3",
+    "expected_local_url": "http://127.0.0.1:8787",
+    "expected_token_file": "bridge-token.txt"
+  },
+  "external_relay": {
+    "file": "axm-external-chat-relay.js",
+    "default_port": 8797,
+    "routes": ["GET /health", "POST /ask"],
+    "token_file": "external-token.txt"
+  },
+  "truth_boundary": "This package does not copy, replace, or silently modify the platform bridge. Put it beside the recorded upstream bridge or point AXM_UPSTREAM_TOKEN_FILE at that bridge token."
+}
