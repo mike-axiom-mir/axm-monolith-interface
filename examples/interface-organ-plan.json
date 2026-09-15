@@ -1,0 +1,47 @@
+{
+  "source": "demo-monolith",
+  "reason": "Propose a compact phone tools surface without direct DOM authority.",
+  "changes": [
+    {
+      "op": "ensure_surface",
+      "surface": {
+        "id": "phone-tools",
+        "title": "Phone tools",
+        "description": "Declarative adaptive region managed by interface organs.",
+        "layout": "stack"
+      }
+    },
+    {
+      "op": "add_component",
+      "surfaceId": "phone-tools",
+      "component": {
+        "id": "connection-status",
+        "kind": "status",
+        "slot": "main",
+        "order": 10,
+        "props": {
+          "label": "Monolith connection",
+          "source": "host.connection"
+        }
+      }
+    },
+    {
+      "op": "add_component",
+      "surfaceId": "phone-tools",
+      "component": {
+        "id": "capabilities",
+        "kind": "capability-list",
+        "slot": "main",
+        "order": 20,
+        "props": {
+          "statusFilter": ["verified", "declared", "experimental", "blocked"]
+        }
+      }
+    },
+    {
+      "op": "set_preference",
+      "key": "density",
+      "value": "compact"
+    }
+  ]
+}
