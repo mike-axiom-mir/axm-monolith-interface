@@ -7,4 +7,7 @@ if [ -f "phone.env" ]; then
   . ./phone.env
   set +a
 fi
+if [ -z "$AXM_PHONE_MONOLITH_ROOT" ] && [ -d "../phone-monolith" ]; then
+  export AXM_PHONE_MONOLITH_ROOT="$(cd ../phone-monolith && pwd)"
+fi
 exec node ./axm-phone-bridge.js
