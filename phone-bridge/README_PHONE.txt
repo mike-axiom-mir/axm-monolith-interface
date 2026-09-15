@@ -1,11 +1,11 @@
-AXM PHONE-LOCAL MONOLITH BRIDGE v0.2
+AXM PHONE-LOCAL MONOLITH BRIDGE v0.3
 ====================================
 
 WHAT THIS IS
 ------------
 The phone equivalent of the collaboration-platform bridge. It runs ON Android
-(Termux + Node), serves the phone interface, and owns the phone-local monolith
-install/connection path.
+(Termux + Node), serves the phone interface, owns the phone-local monolith
+install/connection path, and can use a locally logged-in Codex CLI seat.
 
 Normal path:
 
@@ -16,10 +16,39 @@ Normal path:
   AXM Phone Monolith Bridge
           |
           +--> active phone monolith ZIP/body
-          +--> OpenAI route (provider id: chatgpt)  <-- current primary
+          +--> Codex CLI seat (preferred when installed + logged in)
+          +--> optional OpenAI API route
           +--> optional phone-local model
-          +--> Codex local seat when actually installed on phone
           +--> optional Claude compatibility
+
+CODEX CLI SEAT
+--------------
+The bridge looks for `codex` (or AXM_CODEX_BINARY) and runs:
+
+  codex login status
+
+The Codex seat is marked READY only when that command proves a logged-in state.
+For a first phone test, try the official npm install path:
+
+  npm install -g @openai/codex
+  codex
+
+Choose Sign in with ChatGPT, finish the browser login, then check:
+
+  codex login status
+
+Reload the AXM phone page. If Codex works on the phone, it becomes the preferred
+provider automatically. If the binary cannot run on Android/Termux, the bridge
+reports Codex unavailable without breaking the monolith or other provider slots.
+
+For conversation requests the bridge invokes Codex non-interactively with:
+- read-only sandbox
+- ephemeral session
+- no Git-repository requirement
+- active monolith directory as its working directory
+
+So Codex can inspect the connected monolith body during chat but the chat seat is
+not allowed to silently modify it.
 
 CONNECT A MONOLITH ZIP
 ----------------------
@@ -53,25 +82,25 @@ INSTALL ON ANDROID
 4. Run:
      bash INSTALL_TERMUX.sh
    This installs Node.js plus unzip/zipinfo tooling.
-5. Optional: copy phone.env.example to phone.env and configure provider settings.
-6. Start:
+5. Try installing/logging into Codex as above.
+6. Optional: copy phone.env.example to phone.env for binary/model/provider overrides.
+7. Start:
      ./START_PHONE_BRIDGE.sh
-7. Open on the SAME phone:
+8. Open on the SAME phone:
      http://127.0.0.1:8787/
-8. Press Connect monolith ZIP and choose the checkpoint ZIP.
+9. Press Connect monolith ZIP and choose the AXM monolith ZIP.
 
 CURRENT PROVIDER SLOTS
 ----------------------
+codex
+  Preferred local seat. Uses the device's own Codex CLI authentication. No
+  OPENAI_API_KEY is required when Codex itself is logged in with ChatGPT.
+
 chatgpt
-  Current OpenAI API bridge route. Configure OPENAI_API_KEY and
-  AXM_PHONE_OPENAI_MODEL.
+  Separate OpenAI API route. Configure OPENAI_API_KEY and AXM_PHONE_OPENAI_MODEL.
 
 local
   Optional phone-local OpenAI-compatible model. Configure AXM_PHONE_LOCAL_URL.
-
-codex
-  Distinct local Codex seat. It reports unavailable until Codex is actually
-  installed/wired on this phone. It is NOT replaced by the API route.
 
 claude
   Compatibility only if explicitly configured. Not required.
@@ -101,5 +130,7 @@ TRUTH BOUNDARY
 - Native manifest capability status is preserved rather than upgraded by import.
 - Body-only import invents zero capabilities.
 - Conversation output is not execution evidence.
-- The provider id `chatgpt` currently means the OpenAI API route, not this exact
-  cloud ChatGPT conversation.
+- Codex CLI readiness means the local binary is accessible and login status is
+  verified; it does not prove native Android compatibility beyond the operations
+  actually tested on the phone.
+- The provider id `chatgpt` remains the separate OpenAI API route.
