@@ -1,51 +1,40 @@
 # AXM Monolith Interface
 
-Universal host/interface family for plugging AXM monolith cartridges into human and machine-facing surfaces.
+One repository, three first-class interface surfaces over one shared monolith truth:
 
-## First-class surfaces
+- `human/` — desktop/tablet human workspace.
+- `mobile/` — phone-first human conversation seat.
+- `machine/` — structured JSONL surface for machine users.
+- `shared/host-core.js` — shared cartridge, permission, evidence and action-proposal state.
+- `shared/chat-transport.js` — bounded conversation transport used by human, phone and machine surfaces.
+- `external-bridge/` — narrow LAN relay for the existing AXM collaboration-platform bridge.
 
-- `human/` — desktop and tablet human workspace.
-- `mobile/` — phone-first human workspace.
-- `machine/` — structured machine-native interface; no visual UI assumptions.
-- `shared/` — common host core and root/consent logic used by every surface.
-- `contracts/` — cartridge and host-state contracts.
-- `examples/` — local test cartridges.
+## Start with conversation
 
-All three surfaces consume the same cartridge contract. A capability may be presented differently per surface, but it must not silently become a different capability.
+The mobile interface does **not** contain or require a direct AI. Its startup model is:
 
-## Architecture
+1. Open the interface.
+2. Connect/load a monolith cartridge so identity and capability context are known.
+3. Configure or auto-probe a machine route.
+4. Chat becomes the front door.
+5. Capability, permission and evidence views remain available beside the conversation.
 
-```text
-AXM monolith cartridge
-        |
-        v
-shared cartridge + host contract
-   /            |             \
-  v             v              v
-human        mobile         machine
-workspace    touch shell    structured API
+The intelligence may live in the connected monolith, a local model, or an AI provider behind the AXM platform bridge. The UI is a seat/control surface, not the mind itself.
+
+## Existing platform bridge
+
+`mike-axiom-mir/axm-collaboration-platform/bridge/axm-bridge.js` stays local-only on `127.0.0.1:8787` and owns provider keys. The optional external relay in this repo listens separately and forwards only `/health` and `/ask` after a token check. It does not expose shell access, arbitrary files, or the rest of the platform bridge.
+
+For a phone on the same LAN, run the platform bridge, then the external relay, then enter the relay URL and external token in Mobile → Machine link settings.
+
+## Truth boundary
+
+The bridge provider named `chatgpt` is an OpenAI API route. It is **not automatically this exact ChatGPT conversation or subscription session**. Preserving a live ChatGPT conversation would require a separate ChatGPT-facing connector/hosted integration or explicit handoff packets.
+
+## Tests
+
+```bash
+npm test
 ```
 
-## Founding boundaries
-
-1. The interface is a host, not the monolith itself.
-2. Loading a cartridge does not authorize arbitrary execution.
-3. Declared capability is not the same as verified capability.
-4. Human and machine users are first-class users of the same underlying capability system.
-5. Human and machine presentations may differ because their useful interfaces differ.
-6. Personalization changes presentation and preferred workflows, not historical evidence or source truth.
-7. Offline/local operation remains the default unless a capability explicitly requires and receives permission for something else.
-8. Truth, Agency / non-domination, Continuity, and Wisdom before speed remain the internal constitutional merge gate.
-
-## Open locally
-
-- Desktop/tablet human: `human/index.html`
-- Phone human: `mobile/index.html`
-- Machine: `node machine/host.mjs examples/demo-cartridge.json snapshot`
-- Root chooser: `index.html`
-
-No package installation or build step is required for the initial human interfaces. The machine CLI requires a reasonably modern Node.js runtime.
-
-## Current truth state
-
-This repository is an interface foundation. It loads and inspects cartridge manifests and exposes them through three interface forms. It is **not yet a fully wired AXM Connected Monolith runtime** and does not claim that it can execute every declared monolith capability.
+The tests cover shared human/machine capability truth and the bounded conversation transport without requiring a live AI provider.
