@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 'use strict';
 
-/* AXM PHONE MONOLITH BRIDGE v0.2
+/* AXM PHONE MONOLITH BRIDGE v0.3
    Runs on the Android phone itself (Termux + Node).
    Default: 127.0.0.1:8787 only.
    The phone UI can import a monolith ZIP, stage/extract it locally, identify an
    interface manifest when present, and atomically switch the active pointer.
+   A locally installed + logged-in Codex CLI is the preferred intelligence seat.
 */
 
 const http=require('http');
@@ -22,6 +23,9 @@ const PORT=Number(process.env.AXM_PHONE_BRIDGE_PORT||8787);
 const RATE=Number(process.env.AXM_PHONE_BRIDGE_RATE||30);
 const MAX_ZIP_BYTES=Number(process.env.AXM_PHONE_MAX_ZIP_BYTES||2147483648);
 const MAX_ARCHIVE_ENTRIES=Number(process.env.AXM_PHONE_MAX_ZIP_ENTRIES||250000);
+const CODEX_BINARY=process.env.AXM_CODEX_BINARY||'codex';
+const CODEX_MODEL=process.env.AXM_PHONE_CODEX_MODEL||'';
+const CODEX_TIMEOUT_MS=Number(process.env.AXM_PHONE_CODEX_TIMEOUT_MS||180000);
 const ROOT=path.resolve(__dirname,'..');
 const STATE_DIR=path.resolve(process.env.AXM_PHONE_STATE_DIR||path.join(ROOT,'phone-state'));
 const TOKEN_FILE=path.join(STATE_DIR,'phone-bridge-token.txt');
@@ -68,12 +72,60 @@ function findManifestInTree(root){const wanted=new Set(MANIFEST_CANDIDATES);cons
 function bodyOnlyAdapter({archiveName,sha256,root,installId}){return {contractVersion:'0.1',id:'axm-import-'+installId,name:archiveName.replace(/\.zip$/i,''),version:'unknown',description:'Imported AXM monolith archive. No native interface manifest was found, so capabilities are intentionally not inferred.',capabilities:[],permissions:[],provenance:{archiveImported:true,interfaceManifest:false,archiveName,sha256,bodyRoot:root,truthBoundary:'Archive body is present. Capability identity/execution remains unknown until an exact interface manifest or evidenced runtime adapter exists.'}};}
 async function installZip(req){const archiveName=cleanArchiveName(req.headers['x-axm-filename']);const installId=new Date().toISOString().replace(/[:.]/g,'-')+'-'+crypto.randomBytes(4).toString('hex');const incoming=path.join(INCOMING_DIR,installId+'.zip');const stage=path.join(MONOLITHS_DIR,installId);try{const streamed=await streamZip(req,incoming);const inspected=await inspectZip(incoming);fs.mkdirSync(stage,{recursive:false});await execText('unzip',['-q',incoming,'-d',stage]);const hit=findManifestInTree(stage);let manifest,manifestPath,interfaceManifest;if(hit){manifest=hit.manifest;manifestPath=hit.path;interfaceManifest=true;}else{manifest=bodyOnlyAdapter({archiveName,sha256:streamed.sha256,root:stage,installId});manifestPath=path.join(ADAPTERS_DIR,installId+'.json');atomicJson(manifestPath,manifest);interfaceManifest=false;}const pointer={schema:'axm.phone-active-monolith/v0.1',installId,root:stage,archiveName,archiveSha256:streamed.sha256,archiveBytes:streamed.bytes,archiveEntries:inspected.entries,manifestPath,interfaceManifest,activatedAt:new Date().toISOString()};atomicJson(ACTIVE_POINTER,pointer);fs.rmSync(incoming,{force:true});audit(`ZIP activated ${archiveName} · ${installId} · manifest:${interfaceManifest?'native':'body-only-adapter'}`);return {ok:true,manifest,pointer:{installId,root:stage,archiveName,archiveSha256:streamed.sha256,archiveBytes:streamed.bytes,archiveEntries:inspected.entries,interfaceManifest}};}catch(err){try{fs.rmSync(incoming,{force:true});}catch(_){ }try{fs.rmSync(stage,{recursive:true,force:true});}catch(_){ }throw err;}}
 
+let codexStatusCache={at:0,value:null};
+function codexStatus(force=false){
+  const now=Date.now();
+  if(!force&&codexStatusCache.value&&now-codexStatusCache.at<15000)return codexStatusCache.value;
+  const result=childProcess.spawnSync(CODEX_BINARY,['login','status'],{encoding:'utf8',timeout:3500,env:{...process.env}});
+  const inaccessible=!!(result.error&&['ENOENT','EACCES','EPERM'].includes(result.error.code));
+  const timedOut=!!(result.error&&(result.error.code==='ETIMEDOUT'||result.error.killed));
+  const output=String(result.stdout||'')+'\n'+String(result.stderr||'');
+  const installed=!inaccessible;
+  const loginVerified=installed&&!timedOut&&result.status===0&&/\blogged\s+in\b/i.test(output);
+  const authMode=/using\s+ChatGPT/i.test(output)?'chatgpt':(/API\s+key/i.test(output)?'api-key':(loginVerified?'logged-in':'none'));
+  const value={configured:loginVerified,installed,accessible:installed&&!timedOut,loginVerified,timedOut,authMode,model:CODEX_MODEL||null,label:'Codex CLI local seat',reason:loginVerified?'ready':(!installed?'codex binary not found':(timedOut?'codex login status timed out':'run codex login on this device'))};
+  codexStatusCache={at:now,value};
+  return value;
+}
+function messageContent(v){if(typeof v==='string')return v;if(Array.isArray(v))return v.map(x=>x&&typeof x==='object'?(x.text||JSON.stringify(x)):String(x??'')).join('\n');return String(v??'');}
+function codexPrompt(system,messages){
+  const tail=(Array.isArray(messages)?messages:[]).slice(-24);
+  let transcript=tail.map(m=>`${String(m&&m.role||'user').toUpperCase()}:\n${messageContent(m&&m.content)}`).join('\n\n');
+  if(transcript.length>120000)transcript=transcript.slice(-120000);
+  return [system,'You are the phone-local Codex CLI seat connected to the active AXM monolith. This bridge invocation is read-only. You may inspect files under the active monolith working directory, but do not claim you modified or executed monolith capabilities unless separate evidence proves it.','Conversation transcript:',transcript,'Reply to the final user message. Return only the conversational answer intended for the user.'].filter(Boolean).join('\n\n');
+}
+function runCodex(prompt,opts={}){
+  return new Promise((resolve,reject)=>{
+    const status=codexStatus(true);
+    if(!status.installed)return reject(new Error('Codex CLI not found on this phone'));
+    if(!status.loginVerified)return reject(new Error('Codex CLI is not logged in; run `codex login` in Termux, then reload the AXM phone page'));
+    const active=activePointer();
+    const cwd=(active&&active.root)||MONOLITH_ROOT||ROOT;
+    const outFile=path.join(STATE_DIR,`codex-last-${process.pid}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.txt`);
+    const args=['exec','--skip-git-repo-check','--ephemeral','--sandbox','read-only','--color','never','--output-last-message',outFile];
+    const model=String(opts.model||CODEX_MODEL||'').trim();
+    if(model)args.push('--model',model);
+    args.push('-');
+    const env={...process.env};
+    delete env.OPENAI_API_KEY;
+    delete env.CODEX_API_KEY;
+    const child=childProcess.spawn(CODEX_BINARY,args,{cwd,env,stdio:['pipe','pipe','pipe']});
+    let stdout='',stderr='',finished=false;
+    const timer=setTimeout(()=>{if(finished)return;finished=true;try{child.kill('SIGKILL');}catch(_){ }try{fs.rmSync(outFile,{force:true});}catch(_){ }reject(new Error(`Codex CLI timed out after ${CODEX_TIMEOUT_MS} ms`));},CODEX_TIMEOUT_MS);
+    const add=(key,chunk)=>{if(key==='out')stdout+=chunk.toString();else stderr+=chunk.toString();if(stdout.length>16*1024*1024||stderr.length>16*1024*1024){try{child.kill('SIGKILL');}catch(_){ }}};
+    child.stdout.on('data',d=>add('out',d));child.stderr.on('data',d=>add('err',d));
+    child.on('error',err=>{if(finished)return;finished=true;clearTimeout(timer);try{fs.rmSync(outFile,{force:true});}catch(_){ }reject(err);});
+    child.on('close',code=>{if(finished)return;finished=true;clearTimeout(timer);let text='';try{text=fs.readFileSync(outFile,'utf8').trim();}catch(_){ }try{fs.rmSync(outFile,{force:true});}catch(_){ }if(code!==0)return reject(new Error(`Codex CLI exited ${code}: ${String(stderr||stdout).trim().slice(-4000)}`));if(!text)text=String(stdout).trim();if(!text)return reject(new Error('Codex CLI returned no final message'));resolve(text);});
+    child.stdin.on('error',()=>{});child.stdin.end(prompt);
+  });
+}
+
 let stamps=[];
 function overRate(){const n=Date.now();stamps=stamps.filter(t=>n-t<60000);if(stamps.length>=RATE)return true;stamps.push(n);return false;}
 function jsonRequest(urlString,method,extraHeaders,body){return new Promise((resolve,reject)=>{const u=new URL(urlString);const lib=u.protocol==='https:'?https:http;const data=body==null?'':String(body);const q=lib.request({hostname:u.hostname,port:u.port||undefined,path:u.pathname+u.search,method,headers:Object.assign({},extraHeaders||{},data?{'content-length':Buffer.byteLength(data)}:{})},res=>{let out='';res.on('data',d=>out+=d);res.on('end',()=>{let j;try{j=JSON.parse(out||'{}');}catch(_){return reject(new Error('provider returned non-JSON'));}if(res.statusCode<200||res.statusCode>=300)return reject(new Error((j.error&&j.error.message)||j.error||`provider HTTP ${res.statusCode}`));resolve(j);});});q.on('error',reject);if(data)q.write(data);q.end();});}
-function firstProvider(){if(process.env.OPENAI_API_KEY&&process.env.AXM_PHONE_OPENAI_MODEL)return 'chatgpt';if(LOCAL_URL)return 'local';if(process.env.ANTHROPIC_API_KEY&&process.env.AXM_PHONE_CLAUDE_MODEL)return 'claude';return null;}
-function providerStatus(){const claudeModel=process.env.AXM_PHONE_CLAUDE_MODEL||'';const openaiModel=process.env.AXM_PHONE_OPENAI_MODEL||'';return {primary:'chatgpt',chatgpt:{configured:!!process.env.OPENAI_API_KEY&&!!openaiModel,hasKey:!!process.env.OPENAI_API_KEY,model:openaiModel||null,label:'OpenAI route'},local:{configured:!!LOCAL_URL,url:LOCAL_URL||null,model:process.env.AXM_PHONE_LOCAL_MODEL||'local-model',label:'phone-local fallback'},codex:{configured:false,installed:false,reason:'phone-local Codex seat not installed'},claude:{configured:!!process.env.ANTHROPIC_API_KEY&&!!claudeModel,hasKey:!!process.env.ANTHROPIC_API_KEY,model:claudeModel||null,label:'optional compatibility'}};}
-async function callAI(payload){payload=payload&&typeof payload==='object'?payload:{};const opts=payload.opts&&typeof payload.opts==='object'?payload.opts:{};let which=String(opts.aiProvider||opts.targetProvider||opts.provider||firstProvider()||'');if(which==='auto'||which==='bridge')which=firstProvider()||'';if(!which)throw new Error('no fully configured phone AI provider');const loaded=loadManifest();const system=[boundedContext(loaded.manifest),String(opts.system||'')].filter(Boolean).join('\n\n');const messages=Array.isArray(payload.messages)?payload.messages:[];if(which==='chatgpt'){const key=process.env.OPENAI_API_KEY||'';const model=String(opts.model||process.env.AXM_PHONE_OPENAI_MODEL||'');if(!key)throw new Error('OPENAI_API_KEY not set on phone');if(!model)throw new Error('set AXM_PHONE_OPENAI_MODEL on phone');const body=JSON.stringify({model,messages:system?[{role:'system',content:system},...messages]:messages,max_completion_tokens:Number(opts.maxTokens||1024),temperature:typeof opts.temperature==='number'?opts.temperature:0});const j=await jsonRequest('https://api.openai.com/v1/chat/completions','POST',{'content-type':'application/json','authorization':'Bearer '+key},body);return {text:String(j&&j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content||''),provider:'chatgpt'};}if(which==='local'){if(!LOCAL_URL)throw new Error('local provider not configured; set AXM_PHONE_LOCAL_URL');const body=JSON.stringify({model:opts.model||process.env.AXM_PHONE_LOCAL_MODEL||'local-model',messages:system?[{role:'system',content:system},...messages]:messages,max_tokens:Number(opts.maxTokens||1024),temperature:typeof opts.temperature==='number'?opts.temperature:0});const j=await jsonRequest(LOCAL_URL+'/v1/chat/completions','POST',{'content-type':'application/json'},body);return {text:String(j&&j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content||''),provider:'local'};}if(which==='claude'){const key=process.env.ANTHROPIC_API_KEY||'';const model=String(opts.model||process.env.AXM_PHONE_CLAUDE_MODEL||'');if(!key)throw new Error('ANTHROPIC_API_KEY not set on phone');if(!model)throw new Error('set AXM_PHONE_CLAUDE_MODEL on phone');const body=JSON.stringify({model,max_tokens:Number(opts.maxTokens||1024),messages,system,temperature:typeof opts.temperature==='number'?opts.temperature:0});const j=await jsonRequest('https://api.anthropic.com/v1/messages','POST',{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},body);const text=Array.isArray(j.content)?j.content.filter(x=>x&&x.type==='text').map(x=>x.text||'').join('\n'):'';return {text,provider:'claude'};}if(which==='codex')throw new Error('phone-local Codex seat is not installed');throw new Error('unknown provider: '+which);}
+function firstProvider(){const codex=codexStatus();if(codex.configured)return 'codex';if(process.env.OPENAI_API_KEY&&process.env.AXM_PHONE_OPENAI_MODEL)return 'chatgpt';if(LOCAL_URL)return 'local';if(process.env.ANTHROPIC_API_KEY&&process.env.AXM_PHONE_CLAUDE_MODEL)return 'claude';return null;}
+function providerStatus(){const claudeModel=process.env.AXM_PHONE_CLAUDE_MODEL||'';const openaiModel=process.env.AXM_PHONE_OPENAI_MODEL||'';return {primary:'codex',codex:codexStatus(),chatgpt:{configured:!!process.env.OPENAI_API_KEY&&!!openaiModel,hasKey:!!process.env.OPENAI_API_KEY,model:openaiModel||null,label:'OpenAI API route'},local:{configured:!!LOCAL_URL,url:LOCAL_URL||null,model:process.env.AXM_PHONE_LOCAL_MODEL||'local-model',label:'phone-local fallback'},claude:{configured:!!process.env.ANTHROPIC_API_KEY&&!!claudeModel,hasKey:!!process.env.ANTHROPIC_API_KEY,model:claudeModel||null,label:'optional compatibility'}};}
+async function callAI(payload){payload=payload&&typeof payload==='object'?payload:{};const opts=payload.opts&&typeof payload.opts==='object'?payload.opts:{};let which=String(opts.aiProvider||opts.targetProvider||opts.provider||firstProvider()||'');if(which==='auto'||which==='bridge')which=firstProvider()||'';if(!which)throw new Error('no fully configured phone AI provider');const loaded=loadManifest();const system=[boundedContext(loaded.manifest),String(opts.system||'')].filter(Boolean).join('\n\n');const messages=Array.isArray(payload.messages)?payload.messages:[];if(which==='codex'){const text=await runCodex(codexPrompt(system,messages),opts);return {text,provider:'codex'};}if(which==='chatgpt'){const key=process.env.OPENAI_API_KEY||'';const model=String(opts.model||process.env.AXM_PHONE_OPENAI_MODEL||'');if(!key)throw new Error('OPENAI_API_KEY not set on phone');if(!model)throw new Error('set AXM_PHONE_OPENAI_MODEL on phone');const body=JSON.stringify({model,messages:system?[{role:'system',content:system},...messages]:messages,max_completion_tokens:Number(opts.maxTokens||1024),temperature:typeof opts.temperature==='number'?opts.temperature:0});const j=await jsonRequest('https://api.openai.com/v1/chat/completions','POST',{'content-type':'application/json','authorization':'Bearer '+key},body);return {text:String(j&&j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content||''),provider:'chatgpt'};}if(which==='local'){if(!LOCAL_URL)throw new Error('local provider not configured; set AXM_PHONE_LOCAL_URL');const body=JSON.stringify({model:opts.model||process.env.AXM_PHONE_LOCAL_MODEL||'local-model',messages:system?[{role:'system',content:system},...messages]:messages,max_tokens:Number(opts.maxTokens||1024),temperature:typeof opts.temperature==='number'?opts.temperature:0});const j=await jsonRequest(LOCAL_URL+'/v1/chat/completions','POST',{'content-type':'application/json'},body);return {text:String(j&&j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content||''),provider:'local'};}if(which==='claude'){const key=process.env.ANTHROPIC_API_KEY||'';const model=String(opts.model||process.env.AXM_PHONE_CLAUDE_MODEL||'');if(!key)throw new Error('ANTHROPIC_API_KEY not set on phone');if(!model)throw new Error('set AXM_PHONE_CLAUDE_MODEL on phone');const body=JSON.stringify({model,max_tokens:Number(opts.maxTokens||1024),messages,system,temperature:typeof opts.temperature==='number'?opts.temperature:0});const j=await jsonRequest('https://api.anthropic.com/v1/messages','POST',{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},body);const text=Array.isArray(j.content)?j.content.filter(x=>x&&x.type==='text').map(x=>x.text||'').join('\n'):'';return {text,provider:'claude'};}throw new Error('unknown provider: '+which);}
 
 const STATIC={'/':path.join(ROOT,'mobile','phone-local.html'),'/mobile/':path.join(ROOT,'mobile','phone-local.html'),'/mobile/phone-local.html':path.join(ROOT,'mobile','phone-local.html'),'/mobile/index.html':path.join(ROOT,'mobile','index.html'),'/shared/host-core.js':path.join(ROOT,'shared','host-core.js'),'/shared/chat-transport.js':path.join(ROOT,'shared','chat-transport.js')};
 function staticType(p){return p.endsWith('.js')?'application/javascript; charset=utf-8':'text/html; charset=utf-8';}
@@ -90,4 +142,4 @@ const server=http.createServer(async(req,res)=>{
   return send(req,res,404,{error:'not found'});
 });
 
-server.listen(PORT,HOST,()=>{const m=loadManifest();audit(`phone bridge v0.2 up on http://${HOST}:${PORT} · monolith:${m.manifest?'identified':'not-identified'} · providers:${JSON.stringify(providerStatus())}`);console.log('Open on this phone: http://127.0.0.1:'+PORT+'/');console.log('Primary intelligence route: chatgpt/OpenAI (if configured).');console.log('Non-browser machine token: '+TOKEN_FILE);if(!m.manifest)console.log('Choose a monolith ZIP/manifest in the phone page, or set AXM_PHONE_MONOLITH_MANIFEST / AXM_PHONE_MONOLITH_ROOT.');});
+server.listen(PORT,HOST,()=>{const m=loadManifest();const codex=codexStatus(true);audit(`phone bridge v0.3 up on http://${HOST}:${PORT} · monolith:${m.manifest?'identified':'not-identified'} · providers:${JSON.stringify(providerStatus())}`);console.log('Open on this phone: http://127.0.0.1:'+PORT+'/');console.log('Primary intelligence route: Codex CLI when installed + logged in.');console.log('Codex seat: '+(codex.configured?'READY':codex.reason));console.log('Non-browser machine token: '+TOKEN_FILE);if(!m.manifest)console.log('Choose a monolith ZIP/manifest in the phone page, or set AXM_PHONE_MONOLITH_MANIFEST / AXM_PHONE_MONOLITH_ROOT.');});
