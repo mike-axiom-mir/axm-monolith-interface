@@ -1,10 +1,10 @@
 {
   "name": "axm-monolith-interface",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
-  "description": "Human, phone-human and machine-native interfaces over one AXM monolith host, including a phone-local monolith bridge.",
+  "description": "Human, phone-human and machine-native interfaces over one AXM monolith host, including staged phone-local ZIP monolith intake.",
   "scripts": {
-    "test": "node tests/smoke.mjs && node tests/chat.mjs && node --check phone-bridge/axm-phone-bridge.js && node tests/phone-bridge.mjs",
+    "test": "node tests/smoke.mjs && node tests/chat.mjs && node tests/mobile-page.mjs && node --check phone-bridge/axm-phone-bridge.js && node tests/phone-bridge.mjs",
     "machine": "node machine/host.mjs serve",
     "phone-bridge": "node phone-bridge/axm-phone-bridge.js"
   },
