@@ -5,12 +5,15 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='0.1.0-experimental';
+  const VERSION='0.1.1-experimental';
+  const BLOCKED_PATH_KEYS=new Set(['__proto__','prototype','constructor']);
 
   function clone(value){return value===undefined?undefined:JSON.parse(JSON.stringify(value));}
   function getPath(object,path){
     if(!object||typeof path!=='string'||!/^[A-Za-z0-9_.:-]{1,160}$/.test(path)) return undefined;
-    return path.split('.').reduce((value,key)=>value&&typeof value==='object'?value[key]:undefined,object);
+    const keys=path.split('.');
+    if(keys.some(key=>BLOCKED_PATH_KEYS.has(key))) return undefined;
+    return keys.reduce((value,key)=>value&&typeof value==='object'&&Object.prototype.hasOwnProperty.call(value,key)?value[key]:undefined,object);
   }
   function text(value){
     if(value===null||value===undefined) return '';
