@@ -55,6 +55,20 @@
     "surfaces":{"type":"array"},
     "machine":{"type":"object"},
     "personalization":{"type":"object"},
+    "interface": {
+      "type": "object",
+      "description": "Optional declarative interface proposal. The host stages it for review; presence never authorizes automatic application.",
+      "properties": {
+        "schema": {"type":"string"},
+        "reason": {"type":"string"},
+        "changes": {
+          "type":"array",
+          "maxItems":64,
+          "items":{"$ref":"interface-change.schema.json"}
+        }
+      },
+      "additionalProperties": true
+    },
     "provenance":{"type":"object"}
   },
   "additionalProperties": true
