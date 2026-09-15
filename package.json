@@ -1,10 +1,10 @@
 {
   "name": "axm-monolith-interface",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Human, mobile-human and machine-native host interfaces for AXM monolith cartridges.",
+  "description": "Human, phone-human and machine-native interfaces over one AXM monolith host, with a bounded conversation transport.",
   "scripts": {
-    "test": "node tests/smoke.mjs",
+    "test": "node tests/smoke.mjs && node tests/chat.mjs",
     "machine": "node machine/host.mjs serve"
   },
   "engines": {"node": ">=18"}
