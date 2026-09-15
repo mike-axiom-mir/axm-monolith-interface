@@ -8,15 +8,25 @@ Provide stable device/user-facing interfaces that can load changing AXM monolith
 
 Human desktop/tablet, phone-human, and machine-native users are different interaction surfaces over one shared state/contract. Presentation may diverge; capability identity, permission decisions, evidence and action truth may not silently diverge.
 
+## Phone-local bridge
+
+The primary mobile architecture is local to the phone:
+
+`phone human interface -> phone-local bridge -> installed monolith -> optional intelligence route`
+
+The phone interface is not required to contain an AI. The bridge is the phone's local doorway and defaults to loopback-only `127.0.0.1`. It may connect to a phone-local model or an explicitly configured remote AI API while keeping provider keys outside the browser UI.
+
+The bridge must remain small and must not duplicate the monolith body. Monolith identity/capability truth comes from an exact installed manifest. If that manifest is unavailable, the bridge reports the monolith as unidentified instead of inferring capabilities from filenames or size.
+
 ## Conversation is the front door
 
-Especially on phone, a human should not need to understand capability registries before they can begin. Once a monolith identity and machine route are connected, the default surface is conversation. The chat layer is transport-agnostic: the machine can live locally, behind the platform bridge, or eventually behind another verified monolith-native transport.
+Especially on phone, a human should not need to understand capability registries before beginning. When a monolith identity and intelligence route are connected, conversation is the default human surface. Capability, permission and evidence views remain inspectable alongside it.
 
-The interface must never imply that intelligence lives inside the page merely because a conversation is displayed there.
+The interface must never imply that intelligence lives inside the page merely because conversation is displayed there. Conversation output is not execution evidence.
 
-## External bridge boundary
+## Other bridge paths
 
-The existing collaboration-platform bridge remains loopback-only. A separate optional external relay may expose only the minimum conversation endpoints needed by another device. That relay must be token-locked, rate-bounded, auditable, and must not become a general shell/filesystem door.
+The collaboration-platform bridge and its optional LAN relay remain separate compatibility paths. They are not prerequisites for the phone-local bridge and must not silently become the phone's authority source.
 
 ## Four roots
 
@@ -29,4 +39,5 @@ Operational consequences include:
 - a proposed action is not an executed action;
 - conversation output is not evidence that a tool/action ran;
 - personalization may reshape presentation but not silently rewrite source truth;
-- external connectivity stays narrow and explicit.
+- external connectivity stays narrow and explicit;
+- Android compatibility is evidenced capability by capability, not assumed from desktop monolith membership.
