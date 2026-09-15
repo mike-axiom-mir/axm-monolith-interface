@@ -147,8 +147,9 @@ async function callAI(payload){
 }
 
 const STATIC={
-  '/':path.join(ROOT,'mobile','index.html'),
-  '/mobile/':path.join(ROOT,'mobile','index.html'),
+  '/':path.join(ROOT,'mobile','phone-local.html'),
+  '/mobile/':path.join(ROOT,'mobile','phone-local.html'),
+  '/mobile/phone-local.html':path.join(ROOT,'mobile','phone-local.html'),
   '/mobile/index.html':path.join(ROOT,'mobile','index.html'),
   '/shared/host-core.js':path.join(ROOT,'shared','host-core.js'),
   '/shared/chat-transport.js':path.join(ROOT,'shared','chat-transport.js')
