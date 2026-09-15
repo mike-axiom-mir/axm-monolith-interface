@@ -1,48 +1,32 @@
 {
   "protocol": "axm-monolith-interface/machine",
-  "version": "0.1.0",
-  "purpose": "Structured machine-native surface over the same AXM host core used by human interfaces.",
+  "version": "0.2.0",
+  "purpose": "Structured machine-native surface over the same AXM host and conversation contracts used by human interfaces.",
   "format": "JSON Lines",
   "transport": {
-    "implemented": ["stdin/stdout"],
-    "notYetImplemented": ["local socket", "http", "p2p"]
+    "implemented": ["stdin/stdout", "bounded AXM bridge chat client"],
+    "notYetImplemented": ["local socket", "p2p"]
   },
   "commands": {
-    "load": {
-      "input": {"command":"load","manifest":{"$ref":"../contracts/cartridge.schema.json"}},
-      "effect": "Replaces current cartridge session manifest and resets cartridge permission decisions."
-    },
-    "snapshot": {
-      "input": {"command":"snapshot"},
-      "output": "Current host snapshot including cartridge, capability counts, permissions, preferences and evidence."
-    },
-    "capabilities": {
-      "input": {"command":"capabilities"},
-      "output": "Normalized capability array."
-    },
-    "permission": {
-      "input": {"command":"permission","id":"permission-id","decision":"approved|denied|unreviewed"},
-      "effect": "Changes current session permission decision only."
-    },
-    "propose_action": {
-      "input": {"command":"propose_action","capabilityId":"capability-id","operation":"operation-id","input":{}},
-      "output": "Action receipt. Current foundation always reports execution=not_executed until a verified runtime adapter exists."
-    },
-    "evidence": {
-      "input": {"command":"evidence"},
-      "output": "Append-only session evidence rows."
-    },
-    "disconnect": {
-      "input": {"command":"disconnect"},
-      "effect": "Disconnects current cartridge."
-    }
+    "load": {"input":{"command":"load","manifest":{"$ref":"../contracts/cartridge.schema.json"}}},
+    "snapshot": {"input":{"command":"snapshot"}},
+    "capabilities": {"input":{"command":"capabilities"}},
+    "permission": {"input":{"command":"permission","id":"permission-id","decision":"approved|denied|unreviewed"}},
+    "propose_action": {"input":{"command":"propose_action","capabilityId":"capability-id","operation":"operation-id","input":{}},"truth":"proposal is never represented as executed without a runtime receipt"},
+    "chat_config": {"input":{"command":"chat_config","baseUrl":"http://127.0.0.1:8787","token":"optional","provider":"auto|local|claude|chatgpt","model":"optional"}},
+    "chat_health": {"input":{"command":"chat_health"}},
+    "chat": {"input":{"command":"chat","text":"message","provider":"optional override","model":"optional override","maxTokens":1024},"requirement":"monolith must be connected first"},
+    "chat_history": {"input":{"command":"chat_history"}},
+    "chat_clear": {"input":{"command":"chat_clear"}},
+    "evidence": {"input":{"command":"evidence"}},
+    "disconnect": {"input":{"command":"disconnect"}}
   },
   "invariants": [
     "Machine and human surfaces normalize through the same shared host core.",
+    "Conversation is a transport surface, not proof that intelligence lives in the UI.",
     "Declared does not mean verified.",
     "Loading does not grant permissions.",
     "Action proposals are not represented as executed work.",
-    "Presentation preferences do not rewrite source evidence.",
     "Truth, Agency/non-domination, Continuity and Wisdom before speed remain the internal constitutional gate."
   ]
 }
