@@ -7,8 +7,23 @@ One repository, three first-class interface surfaces over one shared monolith tr
 - `machine/` — structured JSONL surface for machine users.
 - `shared/host-core.js` — shared cartridge, permission, evidence and action-proposal state.
 - `shared/chat-transport.js` — bounded conversation transport.
-- `phone-bridge/` — **phone-local monolith bridge**; the normal mobile bridge path.
-- `external-bridge/` — optional LAN companion for reaching the older collaboration-platform bridge; not required for the phone-local architecture.
+- `phone-bridge/` — phone-local monolith bridge.
+- `external-bridge/` — optional peer/inter-device compatibility path only; never a prerequisite for a device-local monolith.
+
+## Device-local bridge invariant
+
+**Wherever a monolith lives, its primary bridge lives on that same device.**
+
+```text
+phone monolith   -> phone-local bridge
+laptop monolith  -> laptop-local bridge
+mini-PC monolith -> mini-PC-local bridge
+future device    -> that device's local bridge
+```
+
+A device must not require another user's device, a laptop on the same network, or another AXM host to remain powered and in range merely to use its own installed monolith.
+
+Cross-device links are optional composition/mesh paths between independently usable nodes. They add collaboration or capability sharing; they are not the base runtime dependency.
 
 ## Phone is self-contained
 
@@ -43,9 +58,9 @@ If no known manifest exists, the bridge reports the monolith as **unidentified**
 
 Conversation is the easiest human entry point, especially on phone. Capability status, permissions and evidence remain inspectable beside it. A conversation reply is never treated as proof that a capability executed.
 
-## Optional old-platform LAN route
+## Optional inter-device route
 
-`external-bridge/` remains available for the different use case where another device needs to reach `axm-collaboration-platform/bridge/axm-bridge.js` across a LAN. That is no longer the primary phone design.
+`external-bridge/` remains only for the separate case where one independently usable AXM device explicitly chooses to communicate with another. It is optional peer connectivity, not the normal phone architecture and not a dependency chain.
 
 ## Truth boundary
 
@@ -57,4 +72,4 @@ The provider name `chatgpt` refers to an OpenAI API route. It is **not automatic
 npm test
 ```
 
-The test command covers shared human/machine capability truth, bounded conversation transport, and syntax-checks the phone-local bridge without requiring a live provider.
+The test command covers shared human/machine capability truth, bounded conversation transport, and the phone-local bridge without requiring a live provider.
