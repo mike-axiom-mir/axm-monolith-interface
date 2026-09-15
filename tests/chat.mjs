@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url);
+const {HostSession}=require('../shared/host-core.js');
+const {ChatSession,buildSystemContext}=require('../shared/chat-transport.js');
+
+const host=new HostSession({surface:'test-chat',userType:'human'});
+const calls=[];
+const fakeFetch=async (url,opts={})=>{
+  calls.push({url,opts});
+  if(url.endsWith('/health')) return {ok:true,status:200,json:async()=>({ok:true,locked:true,providers:{local:{requiresKey:false}}})};
+  if(url.endsWith('/ask')) return {ok:true,status:200,json:async()=>({text:'pong',provider:'local'})};
+  return {ok:false,status:404,json:async()=>({error:'not found'})};
+};
+const chat=new ChatSession({host,fetchImpl:fakeFetch,baseUrl:'http://machine:8797/',token:'secret',provider:'local'});
+await assert.rejects(()=>chat.send('hello'),/Connect a monolith/);
+host.load({id:'demo',name:'Demo',version:'1',capabilities:[{id:'talk',name:'Talk',status:'verified'}],permissions:[]});
+const ctx=buildSystemContext(host);
+assert.match(ctx,/Connected cartridge: Demo/);
+assert.match(ctx,/talk:verified/);
+const h=await chat.health();
+assert.equal(h.ok,true);
+const reply=await chat.send('hello');
+assert.equal(reply.content,'pong');
+assert.equal(reply.provider,'local');
+assert.equal(chat.history().length,2);
+const ask=calls.find(c=>c.url.endsWith('/ask'));
+assert.equal(ask.opts.headers['x-axm-token'],'secret');
+const body=JSON.parse(ask.opts.body);
+assert.equal(body.opts.aiProvider,'local');
+assert.match(body.opts.system,/Declared capability is not proof/);
+console.log('AXM chat transport tests: PASS');
