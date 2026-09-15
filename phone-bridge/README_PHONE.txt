@@ -1,12 +1,12 @@
-AXM PHONE-LOCAL MONOLITH BRIDGE v0.1
-====================================
+AXM PHONE-LOCAL MONOLITH BRIDGE v0.1.2
+======================================
 
 WHAT THIS IS
 ------------
 This is the phone equivalent of the collaboration-platform bridge.
 It runs ON the Android phone, not on a laptop.
 
-Normal path:
+Normal current path:
 
   AXM Mobile interface
           |
@@ -15,9 +15,9 @@ Normal path:
   AXM Phone Monolith Bridge
           |
           +--> installed monolith identity/context
-          +--> optional phone-local model
-          +--> optional Claude API
-          +--> optional OpenAI API
+          +--> OpenAI route (provider id: chatgpt)  <-- primary now
+          +--> optional phone-local model           <-- fallback/future
+          +--> optional Claude compatibility        <-- dormant/not required
 
 The bridge also serves the Mobile interface at:
   http://127.0.0.1:8787/
@@ -26,7 +26,19 @@ WHY
 ---
 The phone UI is only the human surface. It does not need to contain an AI.
 The bridge is the local doorway between that surface, the phone monolith, and
-whatever intelligence route the user chooses.
+the configured intelligence route.
+
+CURRENT PROVIDER PRIORITY
+-------------------------
+For the current setup the bridge prefers:
+
+  1. chatgpt  -> OPENAI_API_KEY + AXM_PHONE_OPENAI_MODEL
+  2. local    -> AXM_PHONE_LOCAL_URL (optional fallback)
+  3. claude   -> compatibility only if explicitly configured
+
+This matches the naming already used by the collaboration-platform bridge.
+Important: its provider id `chatgpt` currently means an OpenAI API call. It is
+not a spawned CLI process and not this exact cloud ChatGPT conversation/session.
 
 MONOLITH
 --------
@@ -54,28 +66,28 @@ INSTALL ON ANDROID
 Practical foundation: Termux + Node.js.
 
 1. Install a current Termux build.
-2. Put this AXM_PHONE_MONOLITH_HOST folder on the phone / inside Termux storage.
-3. In Termux, enter the phone-bridge folder.
-4. Run:
+2. Put the AXM monolith interface folder on the phone / inside Termux storage.
+3. Put/extract the device monolith in sibling `phone-monolith/` or configure an exact path.
+4. In Termux, enter the phone-bridge folder.
+5. Run:
      bash INSTALL_TERMUX.sh
-5. Optionally copy phone.env.example to phone.env and set monolith/provider paths.
-6. Start:
+6. Copy phone.env.example to phone.env and configure OPENAI_API_KEY plus AXM_PHONE_OPENAI_MODEL.
+7. Start:
      ./START_PHONE_BRIDGE.sh
-7. Open on the SAME phone:
+8. Open on the SAME phone:
      http://127.0.0.1:8787/
 
 PROVIDERS
 ---------
-None is mandatory.
+OPENAI / CHATGPT ROUTE — PRIMARY CURRENT PATH
+  Set OPENAI_API_KEY and AXM_PHONE_OPENAI_MODEL in the bridge environment.
 
-PHONE LOCAL MODEL
+PHONE LOCAL MODEL — OPTIONAL
   Set AXM_PHONE_LOCAL_URL to an OpenAI-compatible local server on the phone.
 
-CLAUDE API
-  Set ANTHROPIC_API_KEY and AXM_PHONE_CLAUDE_MODEL in the bridge environment.
-
-OPENAI API
-  Set OPENAI_API_KEY and AXM_PHONE_OPENAI_MODEL in the bridge environment.
+CLAUDE — DORMANT COMPATIBILITY
+  Supported only if ANTHROPIC_API_KEY and AXM_PHONE_CLAUDE_MODEL are supplied.
+  It is not required by the current phone architecture.
 
 API keys remain in the phone-side Node process. The browser UI does not need
 to receive them.
@@ -100,8 +112,6 @@ POST /ask                   bounded conversation route (authorized)
 NOT DONE / TRUTH BOUNDARY
 -------------------------
 - This foundation does not automatically execute arbitrary monolith capabilities.
-- It does not claim a 448 MB+ desktop monolith body will run unchanged on every phone.
-- A monolith manifest identifies capability truth; it does not prove each capability
-  can execute on Android.
+- A monolith manifest identifies capability truth; it does not prove each capability can execute on Android.
 - Phone-native runtime adapters must be evidenced capability by capability.
 - OpenAI API access is not the same thing as this exact ChatGPT conversation.
