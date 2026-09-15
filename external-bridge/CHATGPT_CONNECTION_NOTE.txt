@@ -1,0 +1,14 @@
+CHATGPT CONNECTION NOTE
+=======================
+
+The relay makes the AXM bridge reachable to explicitly configured clients on
+your local network. It does not make this exact cloud ChatGPT conversation
+part of your LAN or preserve this chat session automatically.
+
+The existing platform bridge's provider named "chatgpt" uses OPENAI_API_KEY
+and the OpenAI API. That is a provider route, not this exact ChatGPT account
+conversation/subscription session.
+
+A future exact-session path needs a ChatGPT-facing connector/hosted integration
+or an explicit handoff protocol. Until that exists, do not label API replies as
+coming from this exact conversation.
