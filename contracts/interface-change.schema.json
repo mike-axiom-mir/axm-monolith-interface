@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://axm.local/contracts/interface-change.schema.json",
+  "title": "AXM Declarative Interface Change",
+  "description": "Non-executable change vocabulary consumed by the host-owned interface organ fabric. Cartridges may propose these changes; they do not receive direct DOM/code authority.",
+  "type": "object",
+  "required": ["op"],
+  "properties": {
+    "op": {
+      "enum": [
+        "ensure_surface",
+        "set_surface",
+        "add_component",
+        "update_component",
+        "move_component",
+        "remove_component",
+        "set_preference"
+      ]
+    },
+    "surfaceId": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,80}$"},
+    "componentId": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,80}$"},
+    "surface": {"$ref": "#/$defs/surface"},
+    "component": {"$ref": "#/$defs/component"},
+    "patch": {"type": "object"},
+    "slot": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,80}$"},
+    "order": {"type": "number"},
+    "key": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,80}$"},
+    "value": true
+  },
+  "$defs": {
+    "surface": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,80}$"},
+        "title": {"type": "string"},
+        "description": {"type": "string"},
+        "layout": {"enum": ["stack", "grid", "chat", "dock"]},
+        "components": {"type": "array", "items": {"$ref": "#/$defs/component"}}
+      },
+      "additionalProperties": true
+    },
+    "component": {
+      "type": "object",
+      "required": ["id", "kind"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,80}$"},
+        "kind": {"enum": ["text", "panel", "status", "list", "action", "chat", "capability-list", "permission-list", "evidence-log", "spacer", "metric"]},
+        "slot": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,80}$"},
+        "order": {"type": "number"},
+        "visible": {"type": "boolean"},
+        "props": {"type": "object"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
