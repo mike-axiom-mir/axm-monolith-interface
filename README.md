@@ -21,11 +21,9 @@ mini-PC monolith -> mini-PC-local bridge
 future device    -> that device's local bridge
 ```
 
-A device must not require another user's device, a laptop on the same network, or another AXM host to remain powered and in range merely to use its own installed monolith.
+A device must not require another AXM device to remain powered, nearby, or reachable merely to use its own installed monolith. Cross-device links are optional peer/mesh composition between independently usable nodes.
 
-Cross-device links are optional composition/mesh paths between independently usable nodes. They add collaboration or capability sharing; they are not the base runtime dependency.
-
-## Phone is self-contained
+## Phone flow
 
 The primary phone architecture is:
 
@@ -34,37 +32,40 @@ AXM Phone UI
     ↓
 phone-local bridge (127.0.0.1:8787)
     ↓
-installed phone monolith identity/context
+phone-local monolith ZIP/body
     ↓
 optional intelligence route
+    ├─ OpenAI / chatgpt route (current primary)
     ├─ phone-local model
-    ├─ Claude API
-    └─ OpenAI API
+    ├─ Codex local seat (when actually installed)
+    └─ Claude compatibility
 ```
 
-The phone does **not** need a laptop bridge. The page is the human interface, while the bridge is the local doorway. It can keep provider keys outside the browser and can connect the conversation to an identified monolith.
+Run the phone bridge and open `http://127.0.0.1:8787/` on that same phone. The page has a primary **Connect monolith ZIP** action.
 
-Run the bridge and open `http://127.0.0.1:8787/`. The bridge serves `mobile/phone-local.html`, checks its own health, loads an identified monolith manifest if present, and unlocks chat only when both monolith identity and an intelligence route are real.
+The ZIP install path is staged and fail-closed:
 
-See `phone-bridge/README_PHONE.txt` for the Android/Termux setup.
+1. Stream ZIP to phone storage instead of buffering the whole archive in memory.
+2. Reject unsafe absolute / `..` paths and symlink entries.
+3. Extract into a new staged monolith directory.
+4. Search for a native AXM interface manifest.
+5. Activate the new pointer only after extraction/validation succeeds.
+6. Leave the previous active monolith untouched if import fails.
 
-## Large monolith boundary
+If a native manifest exists, its capability truth is used. If not, the archive is still connected through a bridge-owned **body-only adapter** with zero inferred capabilities. That preserves the body without pretending we know what can execute on Android.
 
-The bridge stays tiny. It does not duplicate the full monolith body. Point `AXM_PHONE_MONOLITH_MANIFEST` at the exact phone monolith interface manifest, or set `AXM_PHONE_MONOLITH_ROOT` to an extracted monolith root.
+## Provider slots
 
-If no known manifest exists, the bridge reports the monolith as **unidentified** instead of inventing capabilities. Installing a manifest through the phone UI stores only the manifest; it does not claim to copy or make the entire monolith Android-executable.
+The bridge exposes distinct provider slots rather than merging everything called OpenAI into one identity:
+
+- `chatgpt` — current OpenAI API route used by the bridge.
+- `local` — optional phone-local OpenAI-compatible model.
+- `codex` — reserved local Codex seat; currently reports unavailable until Codex actually exists on that phone.
+- `claude` — optional compatibility route.
 
 ## Conversation
 
-Conversation is the easiest human entry point, especially on phone. Capability status, permissions and evidence remain inspectable beside it. A conversation reply is never treated as proof that a capability executed.
-
-## Optional inter-device route
-
-`external-bridge/` remains only for the separate case where one independently usable AXM device explicitly chooses to communicate with another. It is optional peer connectivity, not the normal phone architecture and not a dependency chain.
-
-## Truth boundary
-
-The provider name `chatgpt` refers to an OpenAI API route. It is **not automatically this exact ChatGPT conversation or subscription session**.
+Conversation is the easiest human entry point on phone. Capability status, consent and evidence remain inspectable beside it. A conversation reply is never treated as proof that a capability executed.
 
 ## Tests
 
@@ -72,4 +73,4 @@ The provider name `chatgpt` refers to an OpenAI API route. It is **not automatic
 npm test
 ```
 
-The test command covers shared human/machine capability truth, bounded conversation transport, and the phone-local bridge without requiring a live provider.
+The test suite starts the real phone bridge, imports a ZIP with a native manifest, imports a body-only ZIP, checks activation state, and confirms chat fails closed when no intelligence provider is configured.
