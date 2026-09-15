@@ -3,7 +3,7 @@
   if(typeof module==='object'&&module.exports){module.exports=api;}
   if(root){root.AXMHostCore=api;}
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
-  const VERSION='0.2.0-foundation';
+  const VERSION='0.3.0-interface-organs';
   const ROOTS=Object.freeze(['truth','agency','continuity','wisdom']);
 
   function clone(v){return JSON.parse(JSON.stringify(v));}
@@ -46,6 +46,7 @@
       surfaces:asArray(raw.surfaces),
       machine:raw.machine&&typeof raw.machine==='object'?clone(raw.machine):{},
       personalization:raw.personalization&&typeof raw.personalization==='object'?clone(raw.personalization):{},
+      interface:raw.interface&&typeof raw.interface==='object'&&!Array.isArray(raw.interface)?clone(raw.interface):{},
       provenance:raw.provenance&&typeof raw.provenance==='object'?clone(raw.provenance):{}
     };
   }
@@ -71,7 +72,7 @@
       this.cartridge=manifest;
       this.permissions.clear();
       manifest.permissions.forEach(p=>this.permissions.set(p.id,'unreviewed'));
-      this.record('connect','cartridge manifest loaded',{id:manifest.id,version:manifest.version,capabilities:manifest.capabilities.length});
+      this.record('connect','cartridge manifest loaded',{id:manifest.id,version:manifest.version,capabilities:manifest.capabilities.length,interfacePlan:!!(manifest.interface&&Array.isArray(manifest.interface.changes)&&manifest.interface.changes.length)});
       return this.snapshot();
     }
 
