@@ -4,7 +4,8 @@ import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
 const Organs=require('../shared/interface-organs.js');
 
-assert.equal(Organs.VERSION,'0.1.0-experimental');
+assert.equal(Organs.VERSION,'0.2.0-persistence');
+assert.equal(Organs.PERSISTENCE_SCHEMA,'axm.interface-persistence/v0.1');
 assert.equal(Organs.BUILTIN_ORGANS.length,7);
 assert.deepEqual(Organs.ROOTS,['truth','agency','continuity','wisdom']);
 
@@ -80,5 +81,41 @@ const restored=system.rollback(checkpoint.id,{by:'current-user'});
 assert.equal(restored.preferences.density,'compact');
 assert.equal(restored.revision,revisionBeforeRollback+1,'rollback should preserve monotonic revision history');
 assert.equal(restored.metadata.rolledBackFrom,checkpoint.id);
+
+class MemoryStorage{
+  constructor(){this.map=new Map();}
+  getItem(key){return this.map.has(key)?this.map.get(key):null;}
+  setItem(key,value){this.map.set(key,String(value));}
+  removeItem(key){this.map.delete(key);}
+}
+
+const storage=new MemoryStorage();
+const persistence=new Organs.InterfacePersistence({surface:'human-mobile',storage,maxCheckpoints:20,maxEvidence:500});
+assert.equal(persistence.available(),true);
+const saveResult=persistence.save({id:'cartridge-a',version:'1.0.0'},system,{reason:'test-save',approvedPlanKeys:['plan-approved'],deniedPlanKeys:['plan-denied']});
+assert.equal(saveResult.saved,true);
+assert.ok(saveResult.stateHash);
+
+const persisted=persistence.load({id:'cartridge-a',version:'1.0.0'});
+assert.equal(persisted.cartridgeId,'cartridge-a');
+assert.equal(persisted.versionChanged,false);
+assert.equal(persisted.approvedPlanKeys[0],'plan-approved');
+assert.equal(persisted.deniedPlanKeys[0],'plan-denied');
+assert.ok(persisted.checkpoints.length>=1,'checkpoint lineage should persist');
+
+const newer=persistence.load({id:'cartridge-a',version:'2.0.0'});
+assert.equal(newer.versionChanged,true,'same cartridge id may inherit across a visible version change');
+assert.equal(newer.savedVersion,'1.0.0');
+assert.equal(newer.currentVersion,'2.0.0');
+
+const restoredSystem=persistence.restoreSystem(newer,{userType:'human'});
+assert.equal(restoredSystem.snapshot().stateHash,newer.stateHash);
+assert.equal(restoredSystem.snapshot().checkpoints.length,newer.checkpoints.length);
+assert.ok(restoredSystem.snapshot().evidence.some(row=>row.type==='organ_restore'));
+assert.equal(persistence.load({id:'cartridge-b',version:'1.0.0'}),null,'different cartridge must not inherit another cartridge interface');
+
+const corruptKey=persistence.key('cartridge-corrupt');
+storage.setItem(corruptKey,JSON.stringify({schema:Organs.PERSISTENCE_SCHEMA,deviceId:persistence.deviceId,surface:'human-mobile',cartridgeId:'different-id',state:{}}));
+assert.throws(()=>persistence.load({id:'cartridge-corrupt',version:'1'}),/different cartridge/);
 
 console.log('AXM interface organ fabric tests: PASS');
