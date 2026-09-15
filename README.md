@@ -3,33 +3,53 @@
 One repository, three first-class interface surfaces over one shared monolith truth:
 
 - `human/` — desktop/tablet human workspace.
-- `mobile/` — phone-first human conversation seat.
+- `mobile/` — phone-human surfaces.
 - `machine/` — structured JSONL surface for machine users.
 - `shared/host-core.js` — shared cartridge, permission, evidence and action-proposal state.
-- `shared/chat-transport.js` — bounded conversation transport used by human, phone and machine surfaces.
-- `external-bridge/` — narrow LAN relay for the existing AXM collaboration-platform bridge.
+- `shared/chat-transport.js` — bounded conversation transport.
+- `phone-bridge/` — **phone-local monolith bridge**; the normal mobile bridge path.
+- `external-bridge/` — optional LAN companion for reaching the older collaboration-platform bridge; not required for the phone-local architecture.
 
-## Start with conversation
+## Phone is self-contained
 
-The mobile interface does **not** contain or require a direct AI. Its startup model is:
+The primary phone architecture is:
 
-1. Open the interface.
-2. Connect/load a monolith cartridge so identity and capability context are known.
-3. Configure or auto-probe a machine route.
-4. Chat becomes the front door.
-5. Capability, permission and evidence views remain available beside the conversation.
+```text
+AXM Phone UI
+    ↓
+phone-local bridge (127.0.0.1:8787)
+    ↓
+installed phone monolith identity/context
+    ↓
+optional intelligence route
+    ├─ phone-local model
+    ├─ Claude API
+    └─ OpenAI API
+```
 
-The intelligence may live in the connected monolith, a local model, or an AI provider behind the AXM platform bridge. The UI is a seat/control surface, not the mind itself.
+The phone does **not** need a laptop bridge. The page is the human interface, while the bridge is the local doorway. It can keep provider keys outside the browser and can connect the conversation to an identified monolith.
 
-## Existing platform bridge
+Run the bridge and open `http://127.0.0.1:8787/`. The bridge serves `mobile/phone-local.html`, checks its own health, loads an identified monolith manifest if present, and unlocks chat only when both monolith identity and an intelligence route are real.
 
-`mike-axiom-mir/axm-collaboration-platform/bridge/axm-bridge.js` stays local-only on `127.0.0.1:8787` and owns provider keys. The optional external relay in this repo listens separately and forwards only `/health` and `/ask` after a token check. It does not expose shell access, arbitrary files, or the rest of the platform bridge.
+See `phone-bridge/README_PHONE.txt` for the Android/Termux setup.
 
-For a phone on the same LAN, run the platform bridge, then the external relay, then enter the relay URL and external token in Mobile → Machine link settings.
+## Large monolith boundary
+
+The bridge stays tiny. It does not duplicate the full monolith body. Point `AXM_PHONE_MONOLITH_MANIFEST` at the exact phone monolith interface manifest, or set `AXM_PHONE_MONOLITH_ROOT` to an extracted monolith root.
+
+If no known manifest exists, the bridge reports the monolith as **unidentified** instead of inventing capabilities. Installing a manifest through the phone UI stores only the manifest; it does not claim to copy or make the entire monolith Android-executable.
+
+## Conversation
+
+Conversation is the easiest human entry point, especially on phone. Capability status, permissions and evidence remain inspectable beside it. A conversation reply is never treated as proof that a capability executed.
+
+## Optional old-platform LAN route
+
+`external-bridge/` remains available for the different use case where another device needs to reach `axm-collaboration-platform/bridge/axm-bridge.js` across a LAN. That is no longer the primary phone design.
 
 ## Truth boundary
 
-The bridge provider named `chatgpt` is an OpenAI API route. It is **not automatically this exact ChatGPT conversation or subscription session**. Preserving a live ChatGPT conversation would require a separate ChatGPT-facing connector/hosted integration or explicit handoff packets.
+The provider name `chatgpt` refers to an OpenAI API route. It is **not automatically this exact ChatGPT conversation or subscription session**.
 
 ## Tests
 
@@ -37,4 +57,4 @@ The bridge provider named `chatgpt` is an OpenAI API route. It is **not automati
 npm test
 ```
 
-The tests cover shared human/machine capability truth and the bounded conversation transport without requiring a live AI provider.
+The test command covers shared human/machine capability truth, bounded conversation transport, and syntax-checks the phone-local bridge without requiring a live provider.
