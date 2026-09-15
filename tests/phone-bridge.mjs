@@ -67,10 +67,10 @@ try{
     'nested/axm-cartridge.json':JSON.stringify({id:'zip-phone-monolith',name:'ZIP Phone Monolith',version:'2',capabilities:[{id:'creation',status:'verified'}],permissions:[]}),
     'nested/body/readme.txt':'body'
   });
-  const nativeBody=fs.readFileSync(nativeZip);
-  const nativeInstall=await fetch(base+'/monolith/install-zip',{method:'POST',headers:{...auth,'content-type':'application/zip','x-axm-filename':'native-monolith.zip'},body:nativeBody});
-  assert.equal(nativeInstall.status,200,await nativeInstall.text());
-  const nativeResult=await nativeInstall.json();
+  const nativeInstall=await fetch(base+'/monolith/install-zip',{method:'POST',headers:{...auth,'content-type':'application/zip','x-axm-filename':'native-monolith.zip'},body:fs.readFileSync(nativeZip)});
+  const nativeText=await nativeInstall.text();
+  assert.equal(nativeInstall.status,200,nativeText);
+  const nativeResult=JSON.parse(nativeText);
   assert.equal(nativeResult.pointer.interfaceManifest,true);
   assert.equal(nativeResult.manifest.id,'zip-phone-monolith');
   assert.equal(nativeResult.pointer.archiveName,'native-monolith.zip');
@@ -83,8 +83,9 @@ try{
 
   const bodyZip=makeZip('body-only-monolith',{'AXM_BODY/readme.txt':'no interface manifest in this archive'});
   const bodyInstall=await fetch(base+'/monolith/install-zip',{method:'POST',headers:{...auth,'content-type':'application/zip','x-axm-filename':'body-only-monolith.zip'},body:fs.readFileSync(bodyZip)});
-  assert.equal(bodyInstall.status,200,await bodyInstall.text());
-  const bodyResult=await bodyInstall.json();
+  const bodyText=await bodyInstall.text();
+  assert.equal(bodyInstall.status,200,bodyText);
+  const bodyResult=JSON.parse(bodyText);
   assert.equal(bodyResult.pointer.interfaceManifest,false);
   assert.equal(bodyResult.manifest.capabilities.length,0);
   assert.equal(bodyResult.manifest.provenance.interfaceManifest,false);
