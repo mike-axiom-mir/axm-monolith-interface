@@ -8,6 +8,14 @@ Provide stable device/user-facing interfaces that can load changing AXM monolith
 
 Human desktop/tablet, phone-human, and machine-native users are different interaction surfaces over one shared state/contract. Presentation may diverge; capability identity, permission decisions, evidence and action truth may not silently diverge.
 
+## Device-local bridge invariant
+
+Wherever a monolith is installed, its primary bridge is co-located on that same device.
+
+`device interface -> device-local bridge -> device monolith -> optional intelligence route`
+
+A local monolith must remain usable without requiring another AXM device to be powered, nearby, reachable, or acting as its bridge. Cross-device connectivity is optional composition between autonomous nodes, not a hidden dependency chain.
+
 ## Phone-local bridge
 
 The primary mobile architecture is local to the phone:
@@ -26,7 +34,7 @@ The interface must never imply that intelligence lives inside the page merely be
 
 ## Other bridge paths
 
-The collaboration-platform bridge and its optional LAN relay remain separate compatibility paths. They are not prerequisites for the phone-local bridge and must not silently become the phone's authority source.
+Inter-device bridges and relays are optional peer links between independently usable AXM nodes. They may provide collaboration, handoff, mesh participation, capability sharing, or remote seats. They must not silently become the authority source or base runtime requirement for another device's local monolith.
 
 ## Four roots
 
@@ -40,4 +48,5 @@ Operational consequences include:
 - conversation output is not evidence that a tool/action ran;
 - personalization may reshape presentation but not silently rewrite source truth;
 - external connectivity stays narrow and explicit;
-- Android compatibility is evidenced capability by capability, not assumed from desktop monolith membership.
+- Android compatibility is evidenced capability by capability, not assumed from desktop monolith membership;
+- device-local operation remains the default; mesh/peer links are additive rather than required.
