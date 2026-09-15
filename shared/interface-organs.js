@@ -5,8 +5,9 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='0.1.0-experimental';
+  const VERSION='0.2.0-persistence';
   const STATE_SCHEMA='axm.interface-state/v0.1';
+  const PERSISTENCE_SCHEMA='axm.interface-persistence/v0.1';
   const ROOTS=Object.freeze(['truth','agency','continuity','wisdom']);
   const COMPONENT_KINDS=Object.freeze([
     'text','panel','status','list','action','chat','capability-list',
@@ -19,7 +20,7 @@
     {id:'migration',version:'0.1.0',purpose:'Normalize interface state into the current deterministic schema.',operations:[]},
     {id:'personalization',version:'0.1.0',purpose:'Apply local presentation preferences without rewriting source truth.',operations:['set_preference']},
     {id:'evidence',version:'0.1.0',purpose:'Record proposals, decisions, applications and recovery receipts.',operations:[]},
-    {id:'recovery',version:'0.1.0',purpose:'Checkpoint interface state before approved changes and restore known state.',operations:[]}
+    {id:'recovery',version:'0.2.0',purpose:'Checkpoint interface state before approved changes, persist lineage per cartridge, and restore known state.',operations:[]}
   ]);
 
   function clone(value){
@@ -291,5 +292,107 @@
     }
   }
 
-  return Object.freeze({VERSION,STATE_SCHEMA,ROOTS,COMPONENT_KINDS,BUILTIN_ORGANS,canonical,hash,stateHash,migrateState,InterfaceOrganSystem});
+  function storageDeviceId(storage){
+    const key='axm-interface-device-id/v0.1';
+    let id='';
+    try{id=String(storage.getItem(key)||'');}catch(_){return '';}
+    if(id) return id;
+    try{
+      if(typeof globalThis!=='undefined'&&globalThis.crypto&&typeof globalThis.crypto.randomUUID==='function') id=globalThis.crypto.randomUUID();
+      else id=`device-${Date.now()}-${Math.random().toString(36).slice(2,12)}`;
+      storage.setItem(key,id);
+      return id;
+    }catch(_){return '';}
+  }
+  function persistenceKey(surface,cartridgeId){return `axm-interface-organs/v0.1:${encodeURIComponent(String(surface||'unknown'))}:${hash(String(cartridgeId||''))}`;}
+  function normalizeCheckpoint(raw,surface){
+    raw=asObject(raw);
+    const state=migrateState(raw.state,surface);
+    const calculated=stateHash(state);
+    if(raw.stateHash&&raw.stateHash!==calculated) throw new Error(`Checkpoint hash mismatch: ${raw.id||'(unknown)'}`);
+    return {id:cleanString(raw.id||`cp-${state.revision}-${calculated}`,160),reason:cleanString(raw.reason||'restored',300),state,stateHash:calculated,time:cleanString(raw.time||now(),80)};
+  }
+  class InterfacePersistence{
+    constructor(options={}){
+      this.surface=String(options.surface||'unknown');
+      this.storage=options.storage||((typeof globalThis!=='undefined'&&globalThis.localStorage)?globalThis.localStorage:null);
+      this.maxEvidence=Math.max(20,Number(options.maxEvidence||500));
+      this.maxCheckpoints=Math.max(1,Number(options.maxCheckpoints||20));
+      this.deviceId=this.storage?storageDeviceId(this.storage):'';
+    }
+    available(){return !!(this.storage&&this.deviceId);}
+    key(cartridgeId){return persistenceKey(this.surface,cartridgeId);}
+    load(cartridge){
+      cartridge=asObject(cartridge);
+      const cartridgeId=String(cartridge.id||'');
+      if(!cartridgeId||!this.available()) return null;
+      let raw;
+      try{raw=JSON.parse(this.storage.getItem(this.key(cartridgeId))||'null');}catch(_){return null;}
+      if(!raw) return null;
+      if(raw.schema!==PERSISTENCE_SCHEMA) throw new Error(`Unsupported interface persistence schema: ${raw.schema||'(none)'}`);
+      if(raw.deviceId!==this.deviceId) throw new Error('Persisted interface state belongs to a different local device identity.');
+      if(raw.surface!==this.surface) throw new Error('Persisted interface state belongs to a different surface.');
+      if(raw.cartridgeId!==cartridgeId) throw new Error('Persisted interface state belongs to a different cartridge.');
+      const state=migrateState(raw.state,this.surface);
+      const checkpoints=(Array.isArray(raw.checkpoints)?raw.checkpoints:[]).slice(-this.maxCheckpoints).map(item=>normalizeCheckpoint(item,this.surface));
+      const evidence=(Array.isArray(raw.evidence)?raw.evidence:[]).slice(-this.maxEvidence).map(item=>clone(asObject(item)));
+      return {
+        schema:PERSISTENCE_SCHEMA,
+        deviceId:this.deviceId,
+        surface:this.surface,
+        cartridgeId,
+        savedVersion:cleanString(raw.lastSeenVersion||'unknown',120),
+        currentVersion:cleanString(cartridge.version||'unknown',120),
+        versionChanged:String(raw.lastSeenVersion||'unknown')!==String(cartridge.version||'unknown'),
+        savedAt:cleanString(raw.savedAt||'',80),
+        reason:cleanString(raw.reason||'',300),
+        state,
+        stateHash:stateHash(state),
+        checkpoints,
+        evidence,
+        approvedPlanKeys:Array.isArray(raw.approvedPlanKeys)?raw.approvedPlanKeys.map(String):[],
+        deniedPlanKeys:Array.isArray(raw.deniedPlanKeys)?raw.deniedPlanKeys.map(String):[]
+      };
+    }
+    restoreSystem(record,options={}){
+      if(!record) return new InterfaceOrganSystem({surface:this.surface,userType:String(options.userType||'human'),maxCheckpoints:this.maxCheckpoints});
+      const system=new InterfaceOrganSystem({surface:this.surface,userType:String(options.userType||'human'),state:record.state,maxCheckpoints:this.maxCheckpoints});
+      system.checkpoints=record.checkpoints.map(clone);
+      system.evidence=record.evidence.map(clone);
+      system.record('organ_restore','persisted interface lineage restored',{cartridgeId:record.cartridgeId,savedVersion:record.savedVersion,currentVersion:record.currentVersion,versionChanged:record.versionChanged,stateHash:stateHash(system.state),checkpoints:system.checkpoints.length});
+      return system;
+    }
+    save(cartridge,system,meta={}){
+      cartridge=asObject(cartridge);
+      if(!this.available()) return {saved:false,reason:'storage_unavailable'};
+      const cartridgeId=String(cartridge.id||'');
+      if(!cartridgeId) return {saved:false,reason:'cartridge_id_missing'};
+      if(!(system instanceof InterfaceOrganSystem)) throw new Error('InterfacePersistence.save requires an InterfaceOrganSystem.');
+      const record={
+        schema:PERSISTENCE_SCHEMA,
+        deviceId:this.deviceId,
+        surface:this.surface,
+        cartridgeId,
+        lastSeenVersion:cleanString(cartridge.version||'unknown',120),
+        savedAt:now(),
+        reason:cleanString(meta.reason||'state-change',300),
+        state:clone(system.state),
+        stateHash:stateHash(system.state),
+        checkpoints:system.checkpoints.slice(-this.maxCheckpoints).map(clone),
+        evidence:system.evidence.slice(-this.maxEvidence).map(clone),
+        approvedPlanKeys:Array.isArray(meta.approvedPlanKeys)?[...new Set(meta.approvedPlanKeys.map(String))].slice(-128):[],
+        deniedPlanKeys:Array.isArray(meta.deniedPlanKeys)?[...new Set(meta.deniedPlanKeys.map(String))].slice(-128):[]
+      };
+      rejectExecutable(record.state,'persistence.state');
+      try{this.storage.setItem(this.key(cartridgeId),JSON.stringify(record));}
+      catch(err){return {saved:false,reason:'storage_write_failed',error:String(err&&err.message||err)};}
+      return {saved:true,key:this.key(cartridgeId),savedAt:record.savedAt,stateHash:record.stateHash,checkpoints:record.checkpoints.length,evidence:record.evidence.length};
+    }
+    remove(cartridgeId){
+      if(!this.available()) return false;
+      try{this.storage.removeItem(this.key(cartridgeId));return true;}catch(_){return false;}
+    }
+  }
+
+  return Object.freeze({VERSION,STATE_SCHEMA,PERSISTENCE_SCHEMA,ROOTS,COMPONENT_KINDS,BUILTIN_ORGANS,canonical,hash,stateHash,migrateState,InterfaceOrganSystem,InterfacePersistence,persistenceKey});
 });
