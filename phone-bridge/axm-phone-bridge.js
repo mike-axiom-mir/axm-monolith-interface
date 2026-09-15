@@ -84,7 +84,13 @@ function loadManifest(){
 function boundedContext(m){
   if(!m)return 'No phone monolith manifest is currently identified. Do not claim monolith capabilities.';
   const caps=Array.isArray(m.capabilities)?m.capabilities:[];
-  const shown=caps.slice(0,128).map((c,i)=>typeof c==='string'?c:String(c&&c.id||c&&c.name||`cap-${i+1}`)+':'+String(c&&c.status||c&&c.verified?'verified':'declared'));
+  const shown=caps.slice(0,128).map((c,i)=>{
+    if(typeof c==='string')return c+':declared';
+    const obj=c&&typeof c==='object'?c:{};
+    const id=String(obj.id||obj.name||`cap-${i+1}`);
+    const status=typeof obj.status==='string'&&obj.status?obj.status:(obj.verified===true?'verified':'declared');
+    return id+':'+status;
+  });
   return [
     'You are connected through the AXM phone-local monolith bridge.',
     `Monolith: ${String(m.name||m.id)} (${String(m.id||m.name)}) version ${String(m.version||'unknown')}.`,
