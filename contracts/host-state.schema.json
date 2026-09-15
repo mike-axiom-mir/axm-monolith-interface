@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://axm.local/contracts/host-state.schema.json",
+  "title": "AXM Host State Snapshot",
+  "type": "object",
+  "required": ["host","connection","counts","permissions","preferences","evidence"],
+  "properties": {
+    "host": {
+      "type":"object",
+      "required":["version","surface","userType","roots"],
+      "properties": {
+        "version":{"type":"string"},
+        "surface":{"type":"string"},
+        "userType":{"enum":["human","machine"]},
+        "roots":{"type":"array","items":{"type":"string"},"minItems":4}
+      }
+    },
+    "connection": {
+      "type":"object",
+      "required":["connected","cartridge"],
+      "properties": {
+        "connected":{"type":"boolean"},
+        "cartridge":{"type":["object","null"]}
+      }
+    },
+    "counts": {
+      "type":"object",
+      "required":["capabilities","verified","permissions"],
+      "properties": {
+        "capabilities":{"type":"integer","minimum":0},
+        "verified":{"type":"integer","minimum":0},
+        "permissions":{"type":"integer","minimum":0}
+      }
+    },
+    "permissions":{"type":"object","additionalProperties":{"enum":["approved","denied","unreviewed"]}},
+    "preferences":{"type":"object"},
+    "cartridge":{"type":["object","null"]},
+    "evidence":{"type":"array"}
+  },
+  "additionalProperties": false
+}

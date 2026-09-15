@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://axm.local/contracts/cartridge.schema.json",
+  "title": "AXM Monolith Cartridge Manifest",
+  "type": "object",
+  "required": ["id", "name", "version", "capabilities"],
+  "properties": {
+    "contractVersion": {"type":"string"},
+    "id": {"type":"string","minLength":1},
+    "name": {"type":"string","minLength":1},
+    "version": {"type":"string","minLength":1},
+    "description": {"type":"string"},
+    "capabilities": {
+      "type":"array",
+      "items": {
+        "oneOf": [
+          {"type":"string"},
+          {
+            "type":"object",
+            "required":["id"],
+            "properties": {
+              "id":{"type":"string","minLength":1},
+              "name":{"type":"string"},
+              "description":{"type":"string"},
+              "status":{"enum":["declared","verified","blocked","experimental"]},
+              "verified":{"type":"boolean"},
+              "permissions":{"type":"array","items":{"type":"string"},"uniqueItems":true},
+              "surfaces":{"type":"array","items":{"type":"string"},"uniqueItems":true},
+              "machineOperations":{"type":"array","items":{"type":"string"},"uniqueItems":true},
+              "evidence":{"type":"array"}
+            },
+            "additionalProperties": true
+          }
+        ]
+      }
+    },
+    "permissions": {
+      "type":"array",
+      "items": {
+        "oneOf": [
+          {"type":"string"},
+          {
+            "type":"object",
+            "required":["id"],
+            "properties": {
+              "id":{"type":"string","minLength":1},
+              "description":{"type":"string"},
+              "scope":{"type":"string"}
+            },
+            "additionalProperties":true
+          }
+        ]
+      }
+    },
+    "surfaces":{"type":"array"},
+    "machine":{"type":"object"},
+    "personalization":{"type":"object"},
+    "provenance":{"type":"object"}
+  },
+  "additionalProperties": true
+}

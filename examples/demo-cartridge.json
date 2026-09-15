@@ -1,0 +1,33 @@
+{
+  "contractVersion": "0.1",
+  "id": "axm-connected-monolith-demo",
+  "name": "AXM Connected Monolith Demo",
+  "version": "0.3.2-demo",
+  "description": "Interface-only demo manifest. It proves discovery and presentation contracts; it is not the full connected monolith runtime.",
+  "permissions": [
+    {"id":"local-files","description":"Access user-selected local files only.","scope":"explicit-selection"},
+    {"id":"network","description":"Use network access when a capability genuinely requires it.","scope":"per-capability"}
+  ],
+  "capabilities": [
+    {"id":"state-floor","name":"State Floor","description":"Inspect deterministic state and state transitions.","status":"verified","surfaces":["human","mobile","machine"],"machineOperations":["snapshot","inspect"],"evidence":["demo-contract"]},
+    {"id":"creation-fabric","name":"Creation Fabric","description":"Expose creation-oriented workflows through approved host surfaces.","status":"declared","permissions":["local-files"],"surfaces":["human","mobile","machine"],"machineOperations":["describe","propose"]},
+    {"id":"asset-fabric","name":"Asset Fabric","description":"Discover and organize reusable local assets.","status":"experimental","permissions":["local-files"],"surfaces":["human","mobile","machine"],"machineOperations":["list","inspect"]},
+    {"id":"machine-floor","name":"Machine Work Floor","description":"Expose machine-native structured work surfaces.","status":"verified","surfaces":["machine","human"],"machineOperations":["snapshot","propose_action"],"evidence":["demo-contract"]}
+  ],
+  "surfaces": [
+    {"id":"overview","title":"Monolith Overview","description":"High-level connected cartridge state."},
+    {"id":"work","title":"Work Surface","description":"Capability-driven workspace placeholder."}
+  ],
+  "machine": {
+    "preferredFormat":"json",
+    "operations":["snapshot","capabilities","evidence","propose_action"]
+  },
+  "personalization": {
+    "suggestedAccent":"cyan",
+    "allowSurfaceOrdering":true
+  },
+  "provenance": {
+    "kind":"demo",
+    "claim":"Not the full AXM Connected Monolith runtime"
+  }
+}
