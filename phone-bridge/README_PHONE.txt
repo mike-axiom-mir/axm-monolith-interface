@@ -1,12 +1,13 @@
-AXM PHONE-LOCAL MONOLITH BRIDGE v0.1.2
-======================================
+AXM PHONE-LOCAL MONOLITH BRIDGE v0.2
+====================================
 
 WHAT THIS IS
 ------------
-This is the phone equivalent of the collaboration-platform bridge.
-It runs ON the Android phone, not on a laptop.
+The phone equivalent of the collaboration-platform bridge. It runs ON Android
+(Termux + Node), serves the phone interface, and owns the phone-local monolith
+install/connection path.
 
-Normal current path:
+Normal path:
 
   AXM Mobile interface
           |
@@ -14,104 +15,91 @@ Normal current path:
   http://127.0.0.1:8787
   AXM Phone Monolith Bridge
           |
-          +--> installed monolith identity/context
-          +--> OpenAI route (provider id: chatgpt)  <-- primary now
-          +--> optional phone-local model           <-- fallback/future
-          +--> optional Claude compatibility        <-- dormant/not required
+          +--> active phone monolith ZIP/body
+          +--> OpenAI route (provider id: chatgpt)  <-- current primary
+          +--> optional phone-local model
+          +--> Codex local seat when actually installed on phone
+          +--> optional Claude compatibility
 
-The bridge also serves the Mobile interface at:
-  http://127.0.0.1:8787/
+CONNECT A MONOLITH ZIP
+----------------------
+Open the phone page and press:
 
-WHY
----
-The phone UI is only the human surface. It does not need to contain an AI.
-The bridge is the local doorway between that surface, the phone monolith, and
-the configured intelligence route.
+  Connect monolith ZIP
 
-CURRENT PROVIDER PRIORITY
--------------------------
-For the current setup the bridge prefers:
+The bridge then:
 
-  1. chatgpt  -> OPENAI_API_KEY + AXM_PHONE_OPENAI_MODEL
-  2. local    -> AXM_PHONE_LOCAL_URL (optional fallback)
-  3. claude   -> compatibility only if explicitly configured
+1. Streams the ZIP to disk (large archives are not intentionally buffered whole in JS memory).
+2. Rejects unsafe archive paths and ZIP symlink entries.
+3. Extracts into a NEW staged monolith directory.
+4. Searches for:
+     axm-cartridge.json
+     AXM_MONOLITH_MANIFEST.json
+     AXM_TOTALITY_MANIFEST.json
+     monolith-manifest.json
+     manifest.json
+5. Activates the new monolith pointer only after staging succeeds.
+6. Keeps the previous monolith untouched if import fails.
 
-This matches the naming already used by the collaboration-platform bridge.
-Important: its provider id `chatgpt` currently means an OpenAI API call. It is
-not a spawned CLI process and not this exact cloud ChatGPT conversation/session.
-
-MONOLITH
---------
-The bridge does not copy or shrink the monolith. Point it at the monolith you
-actually install on the phone.
-
-Preferred:
-  AXM_PHONE_MONOLITH_MANIFEST=/exact/path/to/axm-cartridge.json
-
-Or point at an extracted monolith root:
-  AXM_PHONE_MONOLITH_ROOT=/exact/path/to/monolith
-
-The bridge checks these manifest names inside that root:
-  axm-cartridge.json
-  AXM_MONOLITH_MANIFEST.json
-  monolith-manifest.json
-  manifest.json
-
-If none exists, the bridge reports the monolith as unidentified rather than
-inventing capabilities. A manifest can also be installed into phone-state via
-POST /monolith/install-manifest from an authorized local client.
+If no native interface manifest exists, the archive still installs using a
+bridge-owned BODY-ONLY adapter with zero invented capabilities. The UI clearly
+labels that state.
 
 INSTALL ON ANDROID
 ------------------
-Practical foundation: Termux + Node.js.
-
 1. Install a current Termux build.
 2. Put the AXM monolith interface folder on the phone / inside Termux storage.
-3. Put/extract the device monolith in sibling `phone-monolith/` or configure an exact path.
-4. In Termux, enter the phone-bridge folder.
-5. Run:
+3. In Termux enter `phone-bridge/`.
+4. Run:
      bash INSTALL_TERMUX.sh
-6. Copy phone.env.example to phone.env and configure OPENAI_API_KEY plus AXM_PHONE_OPENAI_MODEL.
-7. Start:
+   This installs Node.js plus unzip/zipinfo tooling.
+5. Optional: copy phone.env.example to phone.env and configure provider settings.
+6. Start:
      ./START_PHONE_BRIDGE.sh
-8. Open on the SAME phone:
+7. Open on the SAME phone:
      http://127.0.0.1:8787/
+8. Press Connect monolith ZIP and choose the checkpoint ZIP.
 
-PROVIDERS
----------
-OPENAI / CHATGPT ROUTE — PRIMARY CURRENT PATH
-  Set OPENAI_API_KEY and AXM_PHONE_OPENAI_MODEL in the bridge environment.
+CURRENT PROVIDER SLOTS
+----------------------
+chatgpt
+  Current OpenAI API bridge route. Configure OPENAI_API_KEY and
+  AXM_PHONE_OPENAI_MODEL.
 
-PHONE LOCAL MODEL — OPTIONAL
-  Set AXM_PHONE_LOCAL_URL to an OpenAI-compatible local server on the phone.
+local
+  Optional phone-local OpenAI-compatible model. Configure AXM_PHONE_LOCAL_URL.
 
-CLAUDE — DORMANT COMPATIBILITY
-  Supported only if ANTHROPIC_API_KEY and AXM_PHONE_CLAUDE_MODEL are supplied.
-  It is not required by the current phone architecture.
+codex
+  Distinct local Codex seat. It reports unavailable until Codex is actually
+  installed/wired on this phone. It is NOT replaced by the API route.
 
-API keys remain in the phone-side Node process. The browser UI does not need
-to receive them.
-
-SECURITY
---------
-- Bridge defaults to 127.0.0.1 only: same phone.
-- Browser access is accepted only from the bridge's own localhost origin.
-- Non-browser machine clients use a generated token in phone-state.
-- /ask is rate capped.
-- phone-state/phone-bridge.log is append-only operational evidence.
-- The bridge does not expose a shell or arbitrary filesystem endpoint.
+claude
+  Compatibility only if explicitly configured. Not required.
 
 ROUTES
 ------
-GET  /                      phone human interface
-GET  /health                bridge/provider/monolith status
-GET  /monolith              identified manifest (authorized)
-POST /monolith/install-manifest  install exact manifest (authorized)
-POST /ask                   bounded conversation route (authorized)
+GET  /                              phone human interface
+GET  /health                        bridge/provider/active-monolith status
+GET  /monolith                      active interface manifest (authorized)
+POST /monolith/install-manifest     install an exact manifest (authorized)
+POST /monolith/install-zip          stream/stage/activate a monolith ZIP (authorized)
+POST /ask                           bounded conversation route (authorized)
 
-NOT DONE / TRUTH BOUNDARY
--------------------------
-- This foundation does not automatically execute arbitrary monolith capabilities.
-- A monolith manifest identifies capability truth; it does not prove each capability can execute on Android.
-- Phone-native runtime adapters must be evidenced capability by capability.
-- OpenAI API access is not the same thing as this exact ChatGPT conversation.
+STATE / CONTINUITY
+------------------
+phone-state/active-monolith.json stores the active pointer.
+phone-state/monoliths/ contains staged extracted bodies.
+phone-state/adapters/ contains explicit body-only interface adapters when needed.
+phone-state/phone-bridge.log is append-only operational evidence.
+
+The bridge does not automatically delete the previous extracted monolith when a
+new one activates. That is intentional continuity/rollback preservation for now.
+
+TRUTH BOUNDARY
+--------------
+- Archive installation does not prove every contained capability runs on Android.
+- Native manifest capability status is preserved rather than upgraded by import.
+- Body-only import invents zero capabilities.
+- Conversation output is not execution evidence.
+- The provider id `chatgpt` currently means the OpenAI API route, not this exact
+  cloud ChatGPT conversation.
