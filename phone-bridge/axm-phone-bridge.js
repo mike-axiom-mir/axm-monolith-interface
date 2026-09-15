@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-/* AXM PHONE MONOLITH BRIDGE v0.1
+/* AXM PHONE MONOLITH BRIDGE v0.1.1
    Runs on the Android phone itself (Termux + Node).
    Default: 127.0.0.1:8787 only. It serves the phone UI and provides a
    narrow local doorway to the installed monolith identity plus optional
@@ -111,16 +111,25 @@ function jsonRequest(urlString,method,extraHeaders,body){
     req.on('error',reject);if(data)req.write(data);req.end();
   });
 }
-function firstProvider(){if(LOCAL_URL)return 'local';if(process.env.ANTHROPIC_API_KEY)return 'claude';if(process.env.OPENAI_API_KEY)return 'chatgpt';return null;}
-function providerStatus(){return {
-  local:{configured:!!LOCAL_URL,url:LOCAL_URL||null,model:process.env.AXM_PHONE_LOCAL_MODEL||'local-model'},
-  claude:{configured:!!process.env.ANTHROPIC_API_KEY,model:process.env.AXM_PHONE_CLAUDE_MODEL||null},
-  chatgpt:{configured:!!process.env.OPENAI_API_KEY,model:process.env.AXM_PHONE_OPENAI_MODEL||null}
-};}
+function firstProvider(){
+  if(LOCAL_URL)return 'local';
+  if(process.env.ANTHROPIC_API_KEY&&process.env.AXM_PHONE_CLAUDE_MODEL)return 'claude';
+  if(process.env.OPENAI_API_KEY&&process.env.AXM_PHONE_OPENAI_MODEL)return 'chatgpt';
+  return null;
+}
+function providerStatus(){
+  const claudeModel=process.env.AXM_PHONE_CLAUDE_MODEL||'';
+  const openaiModel=process.env.AXM_PHONE_OPENAI_MODEL||'';
+  return {
+    local:{configured:!!LOCAL_URL,url:LOCAL_URL||null,model:process.env.AXM_PHONE_LOCAL_MODEL||'local-model'},
+    claude:{configured:!!process.env.ANTHROPIC_API_KEY&&!!claudeModel,hasKey:!!process.env.ANTHROPIC_API_KEY,model:claudeModel||null},
+    chatgpt:{configured:!!process.env.OPENAI_API_KEY&&!!openaiModel,hasKey:!!process.env.OPENAI_API_KEY,model:openaiModel||null}
+  };
+}
 async function callAI(payload){
   payload=payload&&typeof payload==='object'?payload:{};const opts=payload.opts&&typeof payload.opts==='object'?payload.opts:{};
   let which=String(opts.aiProvider||opts.targetProvider||opts.provider||firstProvider()||'');if(which==='auto'||which==='bridge')which=firstProvider()||'';
-  if(!which)throw new Error('no phone AI provider configured');
+  if(!which)throw new Error('no fully configured phone AI provider');
   const loaded=loadManifest();const system=[boundedContext(loaded.manifest),String(opts.system||'')].filter(Boolean).join('\n\n');
   const messages=Array.isArray(payload.messages)?payload.messages:[];
   if(which==='local'){
