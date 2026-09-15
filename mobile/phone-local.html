@@ -18,21 +18,41 @@
   <div class="section caps" id="caps"></div>
 </section>
 <section class="view" id="view-consent" hidden><div class="hero"><h1>Consent</h1><p>Connecting a monolith does not silently grant permissions or approve interface changes.</p></div><div class="caps" id="permissions"></div></section>
-<section class="view" id="view-proof" hidden><div class="hero"><h1>Evidence</h1><p>Phone-session bridge, ZIP import, identity, permission, interface-organ, conversation and error events.</p></div><div class="log" id="log"></div></section>
+<section class="view" id="view-proof" hidden><div class="hero"><h1>Evidence</h1><p>Phone-session bridge, ZIP import, identity, permission, interface-organ, persistence, conversation and error events.</p></div><div class="log" id="log"></div></section>
 </main>
 <nav class="dock"><button class="active" data-view="chat">Chat</button><button data-view="tools">Tools</button><button data-view="consent">Consent</button><button data-view="proof">Proof</button></nav>
 <script src="/shared/host-core.js"></script><script src="/shared/chat-transport.js"></script><script src="/shared/interface-organs.js"></script><script src="/shared/interface-renderer.js"></script><script>
 (()=>{
   const Core=window.AXMHostCore,Chat=window.AXMChatTransport,Organs=window.AXMInterfaceOrgans,InterfaceRenderer=window.AXMInterfaceRenderer;
+  const SURFACE='human-mobile-phone-local';
   const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#039;'}[c]));
-  const host=new Core.HostSession({surface:'human-mobile-phone-local',userType:'human'});
+  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+  const host=new Core.HostSession({surface:SURFACE,userType:'human'});
   const savedProvider=localStorage.getItem('axm-phone-provider')||'codex';
   const chat=new Chat.ChatSession({host,baseUrl:location.origin,provider:savedProvider});
-  let organSystem=new Organs.InterfaceOrganSystem({surface:'human-mobile-phone-local',userType:'human'});
+  const organPersistence=new Organs.InterfacePersistence({surface:SURFACE,storage:localStorage,maxCheckpoints:20,maxEvidence:500});
+  let organSystem=new Organs.InterfaceOrganSystem({surface:SURFACE,userType:'human'});
+  let persistenceRecord=null,approvedPlanKeys=new Set(),deniedPlanKeys=new Set();
   let health=null,busy=false,installing=false,stagedPlanKey='';
 
-  function resetOrgans(){organSystem=new Organs.InterfaceOrganSystem({surface:'human-mobile-phone-local',userType:'human'});stagedPlanKey='';}
+  function resetOrgans(manifest){
+    persistenceRecord=null;approvedPlanKeys=new Set();deniedPlanKeys=new Set();stagedPlanKey='';
+    try{persistenceRecord=manifest&&manifest.id?organPersistence.load(manifest):null;}
+    catch(err){host.record('interface_persistence_refused','stored interface lineage refused',{cartridgeId:manifest&&manifest.id||null,error:String(err.message||err)});}
+    if(persistenceRecord){
+      organSystem=organPersistence.restoreSystem(persistenceRecord,{userType:'human'});
+      approvedPlanKeys=new Set(persistenceRecord.approvedPlanKeys||[]);deniedPlanKeys=new Set(persistenceRecord.deniedPlanKeys||[]);
+      host.record('interface_persistence_restored','device-local interface lineage restored',{cartridgeId:persistenceRecord.cartridgeId,savedVersion:persistenceRecord.savedVersion,currentVersion:persistenceRecord.currentVersion,versionChanged:persistenceRecord.versionChanged,stateHash:persistenceRecord.stateHash,checkpoints:persistenceRecord.checkpoints.length});
+      if(persistenceRecord.versionChanged)bubble('system',`Restored this monolith’s interface lineage from v${persistenceRecord.savedVersion} into v${persistenceRecord.currentVersion}. Version drift is recorded.`);
+      else bubble('system','Restored this monolith’s approved interface and rollback lineage from this device.');
+    }else organSystem=new Organs.InterfaceOrganSystem({surface:SURFACE,userType:'human'});
+  }
+  function saveOrgans(reason){
+    const cartridge=host.snapshot().cartridge;if(!cartridge)return;
+    const result=organPersistence.save(cartridge,organSystem,{reason,approvedPlanKeys:[...approvedPlanKeys],deniedPlanKeys:[...deniedPlanKeys]});
+    host.record(result.saved?'interface_persistence_saved':'interface_persistence_not_saved',result.saved?'interface organ lineage saved locally':'interface organ lineage was not saved locally',{cartridgeId:cartridge.id,reason,result});
+    if(result.saved){try{persistenceRecord=organPersistence.load(cartridge);}catch(_){ }}
+  }
   function view(v){$$('.view').forEach(x=>x.hidden=x.id!==`view-${v}`);$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===v));}
   function bubble(role,text){const b=document.createElement('div');b.className='bubble '+role;b.textContent=text;$('#messages').appendChild(b);b.scrollIntoView({block:'end',behavior:'smooth'});}
   function configured(name){if(!health||!health.providers)return false;if(name==='auto')return Object.values(health.providers).some(x=>x&&x.configured);return !!(health.providers[name]&&health.providers[name].configured);}
@@ -48,24 +68,26 @@
       $('#provider').value=fallback;chat.configure({provider:fallback});
     }
   }
+  function interfacePlanKey(manifest){const plan=manifest&&manifest.interface;return plan&&Array.isArray(plan.changes)&&plan.changes.length?`${manifest.id}@${manifest.version}:${Organs.hash(plan.changes)}`:'';}
   function stageInterfacePlan(manifest){
     const plan=manifest&&manifest.interface;
     if(!plan||!Array.isArray(plan.changes)||!plan.changes.length)return;
-    const key=`${manifest.id}@${manifest.version}:${Organs.hash(plan.changes)}`;
-    if(key===stagedPlanKey)return;
+    const key=interfacePlanKey(manifest);if(!key||key===stagedPlanKey)return;stagedPlanKey=key;
+    if(approvedPlanKeys.has(key)){host.record('interface_plan_prior_approval','same interface plan already approved on this device',{key,cartridgeId:manifest.id,version:manifest.version});return;}
+    if(deniedPlanKeys.has(key)){host.record('interface_plan_prior_denial','same interface plan remains denied on this device',{key,cartridgeId:manifest.id,version:manifest.version});return;}
     try{
       const proposal=organSystem.propose(plan.changes,{source:`cartridge:${manifest.id}@${manifest.version}`,reason:plan.reason||'Cartridge interface proposal'});
-      stagedPlanKey=key;
-      host.record('interface_plan_staged','cartridge interface plan staged for review',{proposalId:proposal.id,changes:proposal.changes.length,source:proposal.source});
+      host.record('interface_plan_staged','cartridge interface plan staged for review',{proposalId:proposal.id,changes:proposal.changes.length,source:proposal.source,key});
       bubble('system',`This monolith proposes ${proposal.changes.length} interface change${proposal.changes.length===1?'':'s'}. Review them under Tools.`);
-    }catch(err){host.record('interface_plan_rejected','cartridge interface plan rejected before review',{error:String(err.message||err)});bubble('system','Interface plan rejected: '+String(err.message||err));}
+    }catch(err){host.record('interface_plan_rejected','cartridge interface plan rejected before review',{error:String(err.message||err),key});bubble('system','Interface plan rejected: '+String(err.message||err));}
   }
   function connectManifest(manifest,message){
-    host.load(manifest);resetOrgans();const normalized=host.snapshot().cartridge;stageInterfacePlan(normalized);if(message)bubble('system',message);
+    host.load(manifest);const normalized=host.snapshot().cartridge;resetOrgans(normalized);stageInterfacePlan(normalized);if(message)bubble('system',message);
   }
   function renderOrgans(){
     const snap=organSystem.snapshot(),pending=snap.pending||[];
-    $('#organStatus').textContent=`${snap.organs.length} host organs · revision ${snap.state.revision} · ${pending.length} pending · ${snap.checkpoints.length} checkpoints`;
+    const persistBits=organPersistence.available()?(persistenceRecord?` · saved locally${persistenceRecord.versionChanged?' · version drift':''}`:' · local persistence ready'):' · persistence unavailable';
+    $('#organStatus').textContent=`${snap.organs.length} host organs · revision ${snap.state.revision} · ${pending.length} pending · ${snap.checkpoints.length} checkpoints${persistBits}`;
     const proposals=$('#organProposals');while(proposals.firstChild)proposals.removeChild(proposals.firstChild);
     if(!pending.length){const p=document.createElement('p');p.className='notice';p.textContent='No pending interface changes.';proposals.appendChild(p);}
     pending.forEach(item=>{
@@ -74,13 +96,13 @@
       const meta=document.createElement('span');meta.textContent=`${item.changes.length} change${item.changes.length===1?'':'s'} · ${item.reason||'no reason supplied'}`;box.appendChild(meta);
       const hashes=document.createElement('span');hashes.textContent=`${item.beforeHash} → ${item.afterHash}`;box.appendChild(hashes);
       const actions=document.createElement('div');actions.className='organ-actions';
-      const approve=document.createElement('button');approve.type='button';approve.className='btn primary';approve.textContent='Approve';approve.onclick=()=>{try{organSystem.decide(item.id,'approved',{by:'current-user'});host.record('interface_plan_approved','interface proposal approved',{proposalId:item.id});bubble('system','Interface change approved and applied.');render();}catch(err){bubble('system','Interface approval failed: '+String(err.message||err));}};
-      const deny=document.createElement('button');deny.type='button';deny.className='btn danger';deny.textContent='Deny';deny.onclick=()=>{try{organSystem.decide(item.id,'denied',{by:'current-user'});host.record('interface_plan_denied','interface proposal denied',{proposalId:item.id});bubble('system','Interface change denied.');render();}catch(err){bubble('system','Interface denial failed: '+String(err.message||err));}};
+      const approve=document.createElement('button');approve.type='button';approve.className='btn primary';approve.textContent='Approve';approve.onclick=()=>{try{organSystem.decide(item.id,'approved',{by:'current-user'});if(item.source&&item.source.startsWith('cartridge:')&&stagedPlanKey){approvedPlanKeys.add(stagedPlanKey);deniedPlanKeys.delete(stagedPlanKey);}saveOrgans('approved-interface-plan');host.record('interface_plan_approved','interface proposal approved',{proposalId:item.id,key:stagedPlanKey||null});bubble('system','Interface change approved, applied, and saved for this monolith on this device.');render();}catch(err){bubble('system','Interface approval failed: '+String(err.message||err));}};
+      const deny=document.createElement('button');deny.type='button';deny.className='btn danger';deny.textContent='Deny';deny.onclick=()=>{try{organSystem.decide(item.id,'denied',{by:'current-user'});if(item.source&&item.source.startsWith('cartridge:')&&stagedPlanKey){deniedPlanKeys.add(stagedPlanKey);approvedPlanKeys.delete(stagedPlanKey);}saveOrgans('denied-interface-plan');host.record('interface_plan_denied','interface proposal denied and decision persisted',{proposalId:item.id,key:stagedPlanKey||null});bubble('system','Interface change denied. This exact plan will stay denied on this device.');render();}catch(err){bubble('system','Interface denial failed: '+String(err.message||err));}};
       actions.append(approve,deny);box.appendChild(actions);proposals.appendChild(box);
     });
     const recovery=$('#organRecovery');while(recovery.firstChild)recovery.removeChild(recovery.firstChild);
     const latest=snap.checkpoints[snap.checkpoints.length-1];
-    if(latest){const btn=document.createElement('button');btn.type='button';btn.className='btn secondary';btn.style.marginTop='9px';btn.style.width='100%';btn.textContent='Rollback last interface change';btn.onclick=()=>{try{organSystem.rollback(latest.id,{by:'current-user'});host.record('interface_rollback','interface rollback requested',{checkpointId:latest.id});bubble('system','Adaptive interface rolled back to its previous checkpoint.');render();}catch(err){bubble('system','Rollback failed: '+String(err.message||err));}};recovery.appendChild(btn);}
+    if(latest){const btn=document.createElement('button');btn.type='button';btn.className='btn secondary';btn.style.marginTop='9px';btn.style.width='100%';btn.textContent='Rollback last interface change';btn.onclick=()=>{try{organSystem.rollback(latest.id,{by:'current-user'});saveOrgans('rollback-interface');host.record('interface_rollback','interface rollback requested and persisted',{checkpointId:latest.id});bubble('system','Adaptive interface rolled back and the restored state was saved.');render();}catch(err){bubble('system','Rollback failed: '+String(err.message||err));}};recovery.appendChild(btn);}
     const region=$('#adaptiveRegion'),surfaceIds=Object.keys(snap.state.surfaces||{});
     if(!surfaceIds.length){region.hidden=true;while(region.firstChild)region.removeChild(region.firstChild);}
     else{
@@ -115,7 +137,7 @@
   async function send(){const text=$('#message').value.trim();if(!text||busy)return;busy=true;$('#message').value='';bubble('user',text);ready();try{chat.configure({provider:$('#provider').value});const r=await chat.send(text);bubble('assistant',r.content||'(empty response)');}catch(err){bubble('system','Message failed: '+String(err.message||err));}finally{busy=false;render();}}
 
   $('#adaptiveRegion').addEventListener('axm-interface-action',event=>{const detail=event.detail||{};host.record('interface_action_proposal','adaptive interface action requested but not executed',detail);bubble('system',`Interface action “${detail.actionId||detail.componentId||'unknown'}” was proposed. No execution adapter is wired by the renderer.`);render();});
-  window.AXM_INTERFACE_ORGANS=Object.freeze({version:Organs.VERSION,snapshot:()=>organSystem.snapshot(),propose:(changes,meta)=>{const p=organSystem.propose(changes,meta||{source:'local-interface'});render();return p;}});
+  window.AXM_INTERFACE_ORGANS=Object.freeze({version:Organs.VERSION,snapshot:()=>organSystem.snapshot(),propose:(changes,meta)=>{const p=organSystem.propose(changes,meta||{source:'local-interface'});render();return p;},persistence:()=>({available:organPersistence.available(),record:persistenceRecord?{cartridgeId:persistenceRecord.cartridgeId,savedVersion:persistenceRecord.savedVersion,currentVersion:persistenceRecord.currentVersion,versionChanged:persistenceRecord.versionChanged,savedAt:persistenceRecord.savedAt}:null})});
   $$('[data-view]').forEach(b=>b.onclick=()=>view(b.dataset.view));$('#provider').value=[...$('#provider').options].some(o=>o.value===savedProvider)?savedProvider:'codex';$('#provider').onchange=()=>{localStorage.setItem('axm-phone-provider',$('#provider').value);chat.configure({provider:$('#provider').value});host.record('provider_preference','phone intelligence route changed',{provider:$('#provider').value});render();};$('#zipBtn').onclick=()=>$('#zipFile').click();$('#zipFile').onchange=e=>{const f=e.target.files&&e.target.files[0];if(f)installZip(f);};$('#manifestBtn').onclick=()=>$('#manifestFile').click();$('#manifestFile').onchange=e=>{const f=e.target.files&&e.target.files[0];if(f)installManifest(f);};$('#send').onclick=send;$('#message').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});render();attach();
 })();
 </script></body></html>
