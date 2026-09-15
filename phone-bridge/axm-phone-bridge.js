@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 'use strict';
 
-/* AXM PHONE MONOLITH BRIDGE v0.1.1
+/* AXM PHONE MONOLITH BRIDGE v0.1.2
    Runs on the Android phone itself (Termux + Node).
    Default: 127.0.0.1:8787 only. It serves the phone UI and provides a
-   narrow local doorway to the installed monolith identity plus optional
-   local/Claude/OpenAI intelligence. No laptop is required.
+   narrow local doorway to the installed monolith identity.
+   Current primary intelligence route: OpenAI (provider id: chatgpt),
+   mirroring the collaboration-platform bridge. Local and Claude routes
+   remain optional compatibility/fallback paths. No laptop is required.
 */
 
 const http=require('http');
@@ -112,18 +114,19 @@ function jsonRequest(urlString,method,extraHeaders,body){
   });
 }
 function firstProvider(){
+  if(process.env.OPENAI_API_KEY&&process.env.AXM_PHONE_OPENAI_MODEL)return 'chatgpt';
   if(LOCAL_URL)return 'local';
   if(process.env.ANTHROPIC_API_KEY&&process.env.AXM_PHONE_CLAUDE_MODEL)return 'claude';
-  if(process.env.OPENAI_API_KEY&&process.env.AXM_PHONE_OPENAI_MODEL)return 'chatgpt';
   return null;
 }
 function providerStatus(){
   const claudeModel=process.env.AXM_PHONE_CLAUDE_MODEL||'';
   const openaiModel=process.env.AXM_PHONE_OPENAI_MODEL||'';
   return {
-    local:{configured:!!LOCAL_URL,url:LOCAL_URL||null,model:process.env.AXM_PHONE_LOCAL_MODEL||'local-model'},
-    claude:{configured:!!process.env.ANTHROPIC_API_KEY&&!!claudeModel,hasKey:!!process.env.ANTHROPIC_API_KEY,model:claudeModel||null},
-    chatgpt:{configured:!!process.env.OPENAI_API_KEY&&!!openaiModel,hasKey:!!process.env.OPENAI_API_KEY,model:openaiModel||null}
+    primary:'chatgpt',
+    chatgpt:{configured:!!process.env.OPENAI_API_KEY&&!!openaiModel,hasKey:!!process.env.OPENAI_API_KEY,model:openaiModel||null,label:'OpenAI route'},
+    local:{configured:!!LOCAL_URL,url:LOCAL_URL||null,model:process.env.AXM_PHONE_LOCAL_MODEL||'local-model',label:'phone-local fallback'},
+    claude:{configured:!!process.env.ANTHROPIC_API_KEY&&!!claudeModel,hasKey:!!process.env.ANTHROPIC_API_KEY,model:claudeModel||null,label:'optional compatibility'}
   };
 }
 async function callAI(payload){
@@ -132,6 +135,13 @@ async function callAI(payload){
   if(!which)throw new Error('no fully configured phone AI provider');
   const loaded=loadManifest();const system=[boundedContext(loaded.manifest),String(opts.system||'')].filter(Boolean).join('\n\n');
   const messages=Array.isArray(payload.messages)?payload.messages:[];
+  if(which==='chatgpt'){
+    const key=process.env.OPENAI_API_KEY||'';const model=String(opts.model||process.env.AXM_PHONE_OPENAI_MODEL||'');
+    if(!key)throw new Error('OPENAI_API_KEY not set on phone');if(!model)throw new Error('set AXM_PHONE_OPENAI_MODEL on phone');
+    const body=JSON.stringify({model,messages:system?[{role:'system',content:system},...messages]:messages,max_completion_tokens:Number(opts.maxTokens||1024),temperature:typeof opts.temperature==='number'?opts.temperature:0});
+    const j=await jsonRequest('https://api.openai.com/v1/chat/completions','POST',{'content-type':'application/json','authorization':'Bearer '+key},body);
+    return {text:String(j&&j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content||''),provider:'chatgpt'};
+  }
   if(which==='local'){
     if(!LOCAL_URL)throw new Error('local provider not configured; set AXM_PHONE_LOCAL_URL');
     const body=JSON.stringify({model:opts.model||process.env.AXM_PHONE_LOCAL_MODEL||'local-model',messages:system?[{role:'system',content:system},...messages]:messages,max_tokens:Number(opts.maxTokens||1024),temperature:typeof opts.temperature==='number'?opts.temperature:0});
@@ -144,13 +154,6 @@ async function callAI(payload){
     const body=JSON.stringify({model,max_tokens:Number(opts.maxTokens||1024),messages,system,temperature:typeof opts.temperature==='number'?opts.temperature:0});
     const j=await jsonRequest('https://api.anthropic.com/v1/messages','POST',{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},body);
     const text=Array.isArray(j.content)?j.content.filter(x=>x&&x.type==='text').map(x=>x.text||'').join('\n'):'';return {text,provider:'claude'};
-  }
-  if(which==='chatgpt'){
-    const key=process.env.OPENAI_API_KEY||'';const model=String(opts.model||process.env.AXM_PHONE_OPENAI_MODEL||'');
-    if(!key)throw new Error('OPENAI_API_KEY not set on phone');if(!model)throw new Error('set AXM_PHONE_OPENAI_MODEL on phone');
-    const body=JSON.stringify({model,messages:system?[{role:'system',content:system},...messages]:messages,max_completion_tokens:Number(opts.maxTokens||1024),temperature:typeof opts.temperature==='number'?opts.temperature:0});
-    const j=await jsonRequest('https://api.openai.com/v1/chat/completions','POST',{'content-type':'application/json','authorization':'Bearer '+key},body);
-    return {text:String(j&&j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content||''),provider:'chatgpt'};
   }
   throw new Error('unknown provider: '+which);
 }
@@ -192,6 +195,7 @@ server.listen(PORT,HOST,()=>{
   const m=loadManifest();
   audit(`phone bridge up on http://${HOST}:${PORT} · monolith:${m.manifest?'identified':'not-identified'} · providers:${JSON.stringify(providerStatus())}`);
   console.log('Open on this phone: http://127.0.0.1:'+PORT+'/');
+  console.log('Primary intelligence route: chatgpt/OpenAI (if configured).');
   console.log('Non-browser machine token: '+TOKEN_FILE);
   if(!m.manifest)console.log('Monolith manifest not identified yet. Set AXM_PHONE_MONOLITH_MANIFEST, AXM_PHONE_MONOLITH_ROOT, or install one through /monolith/install-manifest.');
 });
